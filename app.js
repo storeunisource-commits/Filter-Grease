@@ -102,70 +102,7 @@ function createStatusBadge(status) {
   return `<span class="badge ${cls}">${status}</span>`;
 }
 
-// ==================== ROUTER ====================
-
-const routes = {
-  '#login': () => import('./views/login.js').then(m => m.render),
-  '#dashboard': () => import('./views/dashboard.js').then(m => m.render),
-  '#blow': () => import('./views/blowing.js').then(m => m.render),
-  '#grease': () => import('./views/greasing.js').then(m => m.render),
-  '#drain': () => import('./views/drain.js').then(m => m.render),
-  '#followup': () => import('./views/followup.js').then(m => m.render),
-  '#submit-report': () => import('./views/submit-report.js').then(m => m.render),
-  '#report-history': () => import('./views/report-history.js').then(m => m.render),
-  '#history': () => import('./views/report.js').then(m => m.render),
-  '#violations': () => import('./views/violations.js').then(m => m.render),
-  '#standards': () => import('./views/standards.js').then(m => m.render),
-  '#admin': () => import('./views/admin.js').then(m => m.render),
-};
-
-const nav = document.getElementById('main-nav');
-const container = document.getElementById('app-container');
-
-function updateNav() {
-  const user = getUserInfo();
-  if (!user) {
-    nav.classList.add('hidden');
-    return;
-  }
-  nav.classList.remove('hidden');
-  document.getElementById('nav-user').textContent = user.display_name;
-  const adminLink = document.getElementById('nav-admin');
-  if (adminLink) adminLink.style.display = user.role === 'admin' ? '' : 'none';
-}
-
-async function navigate() {
-  const hash = window.location.hash || '#dashboard';
-
-  if (hash !== '#login' && !isLoggedIn()) {
-    window.location.hash = '#login';
-    return;
-  }
-  if (hash === '#login' && isLoggedIn()) {
-    window.location.hash = '#dashboard';
-    return;
-  }
-
-  updateNav();
-
-  // Set active nav link
-  document.querySelectorAll('.nav-link').forEach(a => {
-    a.classList.toggle('active', a.getAttribute('href') === hash);
-  });
-
-  const loader = routes[hash] || routes['#dashboard'];
-  try {
-    showLoading(container);
-    const render = await loader();
-    render(container);
-  } catch (e) {
-    showError(container, `เกิดข้อผิดพลาด: ${e.message}`);
-  }
-}
-
-window.addEventListener('hashchange', navigate);
-window.addEventListener('load', navigate);
-
+// Routing is handled in index.html inline script
 // Expose globals for use in view scripts (no module system needed in legacy views)
 window.APP = {
   getTrucks, saveBlow, saveGreasing, saveDrain, saveCall, saveViolation,
