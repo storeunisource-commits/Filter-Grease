@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <!-- SheetJS for client-side Excel parsing -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -34,6 +36,7 @@
         <a class="nav-link" href="#violations">⚠️ มาตรการ</a>
       </span>
       <a class="nav-link" href="#standards">📋 มาตรฐาน</a>
+      <a class="nav-link admin-only" href="#import">📥 Import Excel</a>
       <a class="nav-link admin-only" href="#admin" id="nav-admin">👤 Admin</a>
     </div>
     <div class="nav-user-area">
@@ -66,6 +69,7 @@ const VIEW_SCRIPTS = {
   '#violations':           'views/violations.js',
   '#standards':            'views/standards.js',
   '#admin':                'views/admin.js',
+  '#import':               'views/import.js',
 };
 
 // Routes only viewer can access
@@ -83,7 +87,7 @@ async function loadScript(src) {
   if (loadedScripts[src]) return;
   await new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = src + '?v=4';
+    s.src = src + '?v=5';
     s.onload = resolve;
     s.onerror = reject;
     document.head.appendChild(s);

@@ -50,6 +50,7 @@ function handleRequest(e) {
       case 'deleteuser':       return respond(deleteUser(params, user));
       case 'resetpassword':    return respond(resetPassword(params, user));
       case 'updatetruck':      return respond(updateTruck(params, user));
+      case 'bulkimport':       return respond(bulkImport(params, user));
       default: return respond({ success: false, error: 'Unknown action: ' + action });
     }
   } catch (err) {
@@ -493,6 +494,62 @@ function priorityOf(s) {
 function currentMonthYearGAS() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+// ==================== BULK IMPORT (from Excel history) ====================
+
+function bulkImport(params, user) {
+  if (user.role !== 'admin') return { success: false, error: 'ไม่มีสิทธิ์ — ต้องเป็น admin' };
+  const { records, type } = params;
+  if (!records || !Array.isArray(records) || records.length === 0)
+    return { success: false, error: 'ไม่มีข้อมูล records' };
+  if (type !== 'blow' && type !== 'grease')
+    return { success: false, error: 'type ต้องเป็น blow หรือ grease' };
+
+  let imported = 0, failed = 0;
+  const ts = new Date().toISOString();
+
+  records.forEach(function(r) {
+    try {
+      if (type === 'blow') {
+        const headers = SHEET_HEADERS['เป่ากรอง_Log'];
+        appendLog('เป่ากรอง_Log', headers, [
+          ts,
+          r.date,
+          r.truck_no,
+          r.driver || '',
+          'ใช้งาน',
+          r.action_status || 'done',
+          r.action_datetime || r.date,
+          r.week || '',
+          r.note || '',
+          '',
+          '[import]'
+        ]);
+      } else {
+        const headers = SHEET_HEADERS['อัดจาระบี_Log'];
+        appendLog('อัดจาระบี_Log', headers, [
+          ts,
+          r.date,
+          r.truck_no,
+          r.driver || '',
+          'ใช้งาน',
+          r.action_status || 'done',
+          r.action_datetime || r.date,
+          r.cycle || '',
+          r.month_year || '',
+          r.note || '',
+          '',
+          '[import]'
+        ]);
+      }
+      imported++;
+    } catch (e) {
+      failed++;
+    }
+  });
+
+  return { success: true, imported: imported, failed: failed };
 }
 
 // ==================== USER MANAGEMENT ====================

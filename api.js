@@ -69,6 +69,9 @@ function getViolations(params) { return apiCall({ action: 'getviolations', ...(p
 function getReportHistory() { return apiCall({ action: 'getreporthistory' }); }
 function getFleetStatus(month_year) { return apiCall({ action: 'getfleetstatus', month_year }); }
 
+// ==================== IMPORT ====================
+function bulkImport(records, type) { return apiCall({ action: 'bulkimport', records, type }); }
+
 // ==================== ADMIN ====================
 function getUsers() { return apiCall({ action: 'getusers' }); }
 function addUser(data) { return apiCall({ action: 'adduser', ...data }); }
