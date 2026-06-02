@@ -44,6 +44,7 @@ function handleRequest(e) {
       case 'getcompare':       return respond(getCompare(params));
       case 'getviolations':    return respond(getViolations(params));
       case 'getreporthistory': return respond(getReportHistory());
+      case 'getfleetstatus':  return respond(getFleetStatus(params));
       case 'getusers':         return respond(getUsers(user));
       case 'adduser':          return respond(addUser(params, user));
       case 'deleteuser':       return respond(deleteUser(params, user));
@@ -441,6 +442,57 @@ function getViolations(params) {
 
 function getReportHistory() {
   return { success: true, records: sheetToObjects('รายงาน_Log') };
+}
+
+function getFleetStatus(params) {
+  const monthYear = params.month_year || currentMonthYearGAS();
+  const trucks = sheetToObjects('รถ_Master').filter(r => r.active !== false && r.active !== 'FALSE');
+  const blow  = sheetToObjects('เป่ากรอง_Log').filter(r => r.date && r.date.toString().startsWith(monthYear));
+  const drain = sheetToObjects('เดรนน้ำ_Log').filter(r => r.date && r.date.toString().startsWith(monthYear));
+  const grease = sheetToObjects('อัดจาระบี_Log').filter(r => r.month_year === monthYear);
+
+  const fleet = {};
+  trucks.forEach(t => {
+    fleet[t.truck_no] = { driver: t.driver, blow: {}, drain: {}, grease: {} };
+  });
+
+  // blow & drain — จัดกลุ่มตาม week (1-4) ใช้สถานะที่ดีที่สุด
+  [blow, drain].forEach((logs, li) => {
+    const key = li === 0 ? 'blow' : 'drain';
+    logs.forEach(r => {
+      if (!fleet[r.truck_no]) return;
+      const w = String(r.week || '?');
+      const cur = fleet[r.truck_no][key][w];
+      if (!cur || priorityOf(r.action_status) > priorityOf(cur)) {
+        fleet[r.truck_no][key][w] = r.action_status;
+      }
+    });
+  });
+
+  // grease — จัดกลุ่มตาม cycle: '10-15'=R1, '25-end'=R2
+  grease.forEach(r => {
+    if (!fleet[r.truck_no]) return;
+    const rnd = r.cycle === '10-15' ? '1' : r.cycle === '25-end' ? '2' : null;
+    if (!rnd) return;
+    const cur = fleet[r.truck_no].grease[rnd];
+    if (!cur || priorityOf(r.action_status) > priorityOf(cur)) {
+      fleet[r.truck_no].grease[rnd] = r.action_status;
+    }
+  });
+
+  return { success: true, fleet, month_year: monthYear, trucks: trucks.map(t => ({ truck_no: t.truck_no, driver: t.driver })) };
+}
+
+function priorityOf(s) {
+  if (s === 'done') return 3;
+  if (s === 'called') return 2;
+  if (s === 'not_done') return 1;
+  return 0;
+}
+
+function currentMonthYearGAS() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 
 // ==================== USER MANAGEMENT ====================

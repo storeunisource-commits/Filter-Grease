@@ -13,7 +13,10 @@
 
 <nav id="main-nav" class="hidden">
   <div class="nav-inner">
-    <span class="nav-brand">⚙️ Filter-Grease</span>
+    <span class="nav-brand">
+        <span class="brand-name">⚙️ Filter-Grease</span>
+        <span class="brand-by">By KhunMeen</span>
+      </span>
     <button class="nav-toggle" onclick="toggleMobileNav()">☰</button>
     <div class="nav-links" id="nav-links">
       <a class="nav-link" href="#dashboard">🏠 หน้าหลัก</a>
@@ -27,6 +30,7 @@
       <span class="nav-group edit-only">
         <a class="nav-link" href="#submit-report">📤 ส่งรายงาน</a>
         <a class="nav-link" href="#submit-report-grease">🔧 ส่งรายงาน-จาระบี</a>
+        <a class="nav-link" href="#report-history">📋 ประวัติรายงาน</a>
         <a class="nav-link" href="#violations">⚠️ มาตรการ</a>
       </span>
       <a class="nav-link" href="#standards">📋 มาตรฐาน</a>
@@ -65,7 +69,7 @@ const VIEW_SCRIPTS = {
 };
 
 // Routes only viewer can access
-const VIEWER_ROUTES = new Set(['#login','#dashboard','#history','#standards']);
+const VIEWER_ROUTES = new Set(['#login','#dashboard','#history','#standards','#report-history']);
 
 const loadedScripts = {};
 
@@ -79,7 +83,7 @@ async function loadScript(src) {
   if (loadedScripts[src]) return;
   await new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = src + '?v=3';
+    s.src = src + '?v=4';
     s.onload = resolve;
     s.onerror = reject;
     document.head.appendChild(s);

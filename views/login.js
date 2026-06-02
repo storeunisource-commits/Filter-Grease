@@ -4,7 +4,8 @@ window.VIEW_LOGIN = function render(container) {
     <div class="login-wrap">
       <div class="login-card">
         <div class="login-title">⚙️ Filter-Grease</div>
-        <div class="login-subtitle">ระบบบันทึกการบำรุงรักษารถ</div>
+        <div class="login-subtitle">ระบบบันทึก เป่ากรอง เดรนน้ำ อัดจาระบี</div>
+        <div class="login-by">By KhunMeen</div>
         <div id="login-error" class="alert alert-danger" style="display:none"></div>
         <form id="login-form">
           <div class="form-group">
@@ -32,6 +33,7 @@ window.VIEW_LOGIN = function render(container) {
     try {
       const res = await APP.login(username, password);
       if (res.success) {
+        APP.preWarm(); // warm up GAS ก่อนที่จะ navigate
         window.location.hash = '#dashboard';
       } else {
         errEl.textContent = res.error || 'เข้าสู่ระบบไม่สำเร็จ';

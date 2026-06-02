@@ -45,7 +45,23 @@ window.VIEW_DASHBOARD = async function render(container) {
       <div id="dash-reports"><div class="loading"><div class="spinner"></div></div></div>
     </div>
 
-    <!-- Section 6: Compare -->
+    <!-- Section 6: Fleet Status -->
+    <div class="card">
+      <div class="card-title">🚛 สถานะรถทุกคันประจำเดือน</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+        <div>
+          <div style="font-size:12px;color:#7f8c8d;margin-bottom:4px">เดือน</div>
+          <div style="display:flex;gap:4px">
+            <select class="form-control" id="fleet-year" style="width:auto">${APP.buildYearOptions(curYear)}</select>
+            <select class="form-control" id="fleet-month" style="width:auto">${APP.buildMonthOptions(curMonth)}</select>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-primary" onclick="loadFleetStatus()">🔍 ดูสถานะ</button>
+      </div>
+      <div id="dash-fleet"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- Section 7: Compare -->
     <div class="card">
       <div class="card-title">📈 เปรียบเทียบข้อมูลระหว่างเดือน</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
@@ -165,6 +181,67 @@ window.VIEW_DASHBOARD = async function render(container) {
   } catch (e) {
     document.getElementById('stats-grid').innerHTML = `<div class="alert alert-danger" style="grid-column:1/-1">ไม่สามารถโหลดข้อมูลได้: ${e.message}</div>`;
   }
+
+  // Fleet Status — โหลดอัตโนมัติเดือนปัจจุบัน (แยก async ไม่บล็อก dashboard หลัก)
+  window.loadFleetStatus = async () => {
+    const y = document.getElementById('fleet-year') ? document.getElementById('fleet-year').value : curYear;
+    const m = document.getElementById('fleet-month') ? document.getElementById('fleet-month').value : curMonth;
+    const monthYearStr = y + '-' + String(m).padStart(2, '0');
+    const el = document.getElementById('dash-fleet');
+    if (!el) return;
+    el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const res = await APP.getFleetStatus(monthYearStr);
+      const fleet = res.fleet || {};
+      const truckList = res.trucks || [];
+      if (!truckList.length) { el.innerHTML = '<div class="alert alert-info">ไม่มีข้อมูลรถ</div>'; return; }
+      const SI = { done:'✅', called:'📞', not_done:'❌' };
+      const SC = { done:'s-done', called:'s-called', not_done:'s-not_done' };
+      el.innerHTML = `
+        <div class="table-wrap">
+          <table class="fleet-table">
+            <thead>
+              <tr>
+                <th class="col-truck" rowspan="2">รถ</th>
+                <th class="col-truck" rowspan="2">คนขับ</th>
+                <th class="grp-blow" colspan="4">💨 เป่ากรอง</th>
+                <th class="grp-drain" colspan="4">💧 เดรนน้ำ</th>
+                <th class="grp-grease" colspan="2">🔧 อัดจาระบี</th>
+              </tr>
+              <tr>
+                <th class="grp-blow">W1</th><th class="grp-blow">W2</th>
+                <th class="grp-blow">W3</th><th class="grp-blow">W4</th>
+                <th class="grp-drain">W1</th><th class="grp-drain">W2</th>
+                <th class="grp-drain">W3</th><th class="grp-drain">W4</th>
+                <th class="grp-grease">R1</th><th class="grp-grease">R2</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${truckList.map(t => {
+                const f = fleet[t.truck_no] || {};
+                const b = f.blow || {}; const d = f.drain || {}; const g = f.grease || {};
+                const cell = (v) => `<td class="${SC[v]||''}">${SI[v]||'-'}</td>`;
+                return `<tr>
+                  <td class="td-truck">${t.truck_no}</td>
+                  <td class="td-driver">${t.driver||'-'}</td>
+                  ${cell(b['1'])}${cell(b['2'])}${cell(b['3'])}${cell(b['4'])}
+                  ${cell(d['1'])}${cell(d['2'])}${cell(d['3'])}${cell(d['4'])}
+                  ${cell(g['1'])}${cell(g['2'])}
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="font-size:11px;color:#7f8c8d;margin-top:6px">
+          ✅ ทำแล้ว &nbsp; 📞 โทรแจ้งแล้ว &nbsp; ❌ ยังไม่ได้ทำ &nbsp; - ไม่มีข้อมูล
+        </div>`;
+    } catch (e) {
+      el.innerHTML = `<div class="alert alert-danger">โหลดไม่สำเร็จ: ${e.message}</div>`;
+    }
+  };
+
+  // โหลด fleet status อัตโนมัติเดือนปัจจุบัน
+  loadFleetStatus();
 
   // Compare
   window.loadCompare = async () => {

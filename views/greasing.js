@@ -14,7 +14,7 @@ window.VIEW_GREASE = async function render(container) {
   `;
 
   try {
-    const [trucksRes, violationsRes] = await Promise.all([APP.getTrucks(), APP.getViolations()]);
+    const [trucksRes, violationsRes] = await Promise.all([APP.getTrucksCached(), APP.getViolations()]);
     const trucks = trucksRes.trucks || [];
     const violations = violationsRes.records || [];
     renderGreaseForm(document.getElementById('grease-content'), trucks, today, monthYear, monthLabel, lastDay, autoCycle, violations);

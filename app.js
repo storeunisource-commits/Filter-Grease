@@ -75,6 +75,29 @@ function getReportDeadline(cycle, month, year) {
   }
 }
 
+// ==================== API CACHE ====================
+
+const _apiCache = {};
+
+// Cache any async fn with TTL (milliseconds)
+function cachedCall(key, ttlMs, fn) {
+  const now = Date.now();
+  if (_apiCache[key] && now - _apiCache[key].t < ttlMs) {
+    return Promise.resolve(_apiCache[key].v);
+  }
+  return fn().then(v => { _apiCache[key] = { v, t: now }; return v; });
+}
+
+// Truck list — cache 5 นาที (เปลี่ยนแทบไม่เคย)
+function getTrucksCached() {
+  return cachedCall('trucks', 5 * 60000, getTrucks);
+}
+
+// Pre-warm GAS: ping หลัง login เพื่อให้ cold start ผ่านไปก่อน
+function preWarm() {
+  setTimeout(() => getTrucks().then(v => { _apiCache['trucks'] = { v, t: Date.now() }; }).catch(() => {}), 400);
+}
+
 // ==================== ROLE UTILITIES ====================
 
 function isViewerOnly() {
@@ -144,7 +167,8 @@ window.APP = {
   // API
   getTrucks, updateTruck, saveBlow, saveGreasing, saveDrain, saveCall,
   saveViolation, saveReport, uploadImage,
-  getHistory, getStats, getDashboardFull, getCompare, getViolations, getReportHistory,
+  getHistory, getStats, getDashboardFull, getCompare, getViolations, getReportHistory, getFleetStatus,
+  getTrucksCached, preWarm,
   getUsers, addUser, deleteUser, resetPassword,
   login, logout, isLoggedIn, getUserInfo,
   // Date

@@ -67,6 +67,7 @@ function getDashboardFull(date) { return apiCall({ action: 'getdashboardfull', d
 function getCompare(month1, month2) { return apiCall({ action: 'getcompare', month1, month2 }); }
 function getViolations(params) { return apiCall({ action: 'getviolations', ...(params||{}) }); }
 function getReportHistory() { return apiCall({ action: 'getreporthistory' }); }
+function getFleetStatus(month_year) { return apiCall({ action: 'getfleetstatus', month_year }); }
 
 // ==================== ADMIN ====================
 function getUsers() { return apiCall({ action: 'getusers' }); }
