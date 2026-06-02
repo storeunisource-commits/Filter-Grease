@@ -79,7 +79,7 @@ function getReportDeadline(cycle, month, year) {
 
 const _apiCache = {};
 
-// Cache any async fn with TTL (milliseconds)
+// In-memory TTL cache
 function cachedCall(key, ttlMs, fn) {
   const now = Date.now();
   if (_apiCache[key] && now - _apiCache[key].t < ttlMs) {
@@ -88,9 +88,35 @@ function cachedCall(key, ttlMs, fn) {
   return fn().then(v => { _apiCache[key] = { v, t: now }; return v; });
 }
 
-// Truck list — cache 5 นาที (เปลี่ยนแทบไม่เคย)
+// localStorage-backed TTL cache (persist ข้าม page reload)
+function lsCachedCall(key, ttlMs, fn) {
+  try {
+    const raw = localStorage.getItem('fg_cache_' + key);
+    if (raw) {
+      const cached = JSON.parse(raw);
+      if (Date.now() - cached.t < ttlMs) {
+        _apiCache[key] = cached; // sync to memory cache
+        return Promise.resolve(cached.v);
+      }
+    }
+  } catch (e) {}
+  return fn().then(v => {
+    const entry = { v, t: Date.now() };
+    _apiCache[key] = entry;
+    try { localStorage.setItem('fg_cache_' + key, JSON.stringify(entry)); } catch (e) {}
+    return v;
+  });
+}
+
+// Truck list — cache 30 นาที ใน localStorage (เร็วมากเมื่อเปิดครั้งต่อไป)
 function getTrucksCached() {
-  return cachedCall('trucks', 5 * 60000, getTrucks);
+  return lsCachedCall('trucks', 30 * 60000, getTrucks);
+}
+
+// Clear truck cache (ใช้เมื่อแก้ข้อมูลรถ)
+function clearTruckCache() {
+  delete _apiCache['trucks'];
+  try { localStorage.removeItem('fg_cache_trucks'); } catch (e) {}
 }
 
 // Pre-warm GAS: ping หลัง login เพื่อให้ cold start ผ่านไปก่อน
@@ -168,8 +194,8 @@ window.APP = {
   getTrucks, updateTruck, saveBlow, saveGreasing, saveDrain, saveCall,
   saveViolation, saveReport, uploadImage,
   getHistory, getStats, getDashboardFull, getCompare, getViolations, getReportHistory, getFleetStatus,
-  getTrucksCached, preWarm,
-  issueStopOrder, getStopOrders, updateStopOrder,
+  getTrucksCached, clearTruckCache, preWarm,
+  issueStopOrder, getStopOrders, updateStopOrder, approveStopOrder,
   getUsers, addUser, deleteUser, resetPassword,
   login, logout, isLoggedIn, getUserInfo,
   // Date

@@ -12,7 +12,20 @@ window.VIEW_DASHBOARD = async function render(container) {
 
   container.innerHTML = `
     <div class="page-title">📊 แดชบอร์ด</div>
-    <div class="date-display">📅 ${APP.formatThaiDate(todayDate)} — <span class="badge badge-orange">Week ${week}</span></div>
+    <div class="date-display" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      📅 ${APP.formatThaiDate(todayDate)} — <span class="badge badge-orange">Week ${week}</span>
+    </div>
+
+    <!-- Month/Year Selector -->
+    <div class="card" style="padding:12px 16px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:13px;color:var(--text-light);font-weight:600">ดูข้อมูลเดือน:</span>
+        <select class="form-control" id="dash-year" style="width:auto">${APP.buildYearOptions(curYear)}</select>
+        <select class="form-control" id="dash-month" style="width:auto">${APP.buildMonthOptions(curMonth)}</select>
+        <button class="btn btn-sm btn-primary" onclick="reloadDashboard()">🔍 ดู</button>
+        <button class="btn btn-sm btn-outline" onclick="resetDashboardToNow()">📅 ปัจจุบัน</button>
+      </div>
+    </div>
 
     <!-- Section 1: Alerts -->
     <div id="dash-alerts"></div>
@@ -98,9 +111,16 @@ window.VIEW_DASHBOARD = async function render(container) {
   }
   alertsEl.innerHTML += `<div class="alert alert-info">📋 เป่ากรอง/เดรนน้ำ: Week ${week} ของเดือน</div>`;
 
+  // ใช้ selected year/month ถ้ามี (กรณี reloadDashboard)
+  const selYear  = document.getElementById('dash-year');
+  const selMonth = document.getElementById('dash-month');
+  const useYear  = selYear  ? parseInt(selYear.value)  : curYear;
+  const useMonth = selMonth ? parseInt(selMonth.value) : curMonth;
+  const useDate  = useYear + '-' + String(useMonth).padStart(2,'0') + '-01';
+
   // Load all data
   try {
-    const dashRes = await APP.getDashboardFull(today);
+    const dashRes = await APP.getDashboardFull(useDate);
     const data = dashRes.data || {};
     const stats = data.stats || {};
     const trucks = data.trucks || [];
@@ -332,3 +352,18 @@ function renderDashPending(status, trucks, blowToday, drainToday) {
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message); }
   };
 }
+
+// ============================================================
+// Dashboard reload by selected month/year
+window.reloadDashboard = function() {
+  window.VIEW_DASHBOARD(document.getElementById('app-container'));
+};
+
+window.resetDashboardToNow = function() {
+  const now = new Date();
+  const yearSel  = document.getElementById('dash-year');
+  const monthSel = document.getElementById('dash-month');
+  if (yearSel)  yearSel.value  = now.getFullYear();
+  if (monthSel) monthSel.value = now.getMonth() + 1;
+  window.VIEW_DASHBOARD(document.getElementById('app-container'));
+};

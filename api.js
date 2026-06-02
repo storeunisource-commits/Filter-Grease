@@ -73,6 +73,7 @@ function getFleetStatus(month_year) { return apiCall({ action: 'getfleetstatus',
 function issueStopOrder(data) { return apiCall({ action: 'issuestoporder', ...data }); }
 function getStopOrders(params) { return apiCall({ action: 'getstoporders', ...(params||{}) }); }
 function updateStopOrder(order_no, status) { return apiCall({ action: 'updatestoporder', order_no, status }); }
+function approveStopOrder(data) { return apiCall({ action: 'approvestoporder', ...data }); }
 
 // ==================== ADMIN ====================
 function getUsers() { return apiCall({ action: 'getusers' }); }

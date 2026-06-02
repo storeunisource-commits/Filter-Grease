@@ -53,6 +53,7 @@ function handleRequest(e) {
       case 'issuestoporder':   return respond(issueStopOrder(params, user));
       case 'getstoporders':    return respond(getStopOrders(params));
       case 'updatestoporder':  return respond(updateStopOrder(params, user));
+      case 'approvestoporder': return respond(approveStopOrder(params, user));
       default: return respond({ success: false, error: 'Unknown action: ' + action });
     }
   } catch (err) {
@@ -77,7 +78,7 @@ const SHEET_HEADERS = {
   'โทรตาม_Log':    ['timestamp','date','truck_no','driver','task_type','call_result','note','called_by'],
   'ละเลย_Log':     ['timestamp','date','truck_no','driver','task_type','cycle','violation_type','penalty','recorded_by'],
   'รายงาน_Log':    ['timestamp','report_type','report_cycle','week','month_year','sent_date','sent_by','on_time','note'],
-  'หยุดวิ่ง_Log':  ['timestamp','order_no','issue_date','truck_no','driver','reason_type','reason_detail','severity','status','acknowledged_at','completed_at','issued_by']
+  'หยุดวิ่ง_Log':  ['timestamp','order_no','issue_date','truck_no','driver','reason_type','reason_detail','severity','status','acknowledged_at','completed_at','issued_by','approval_status','approved_by','approved_at','approval_evidence_url','signature_url','vio_count']
 };
 
 function initSheets() {
@@ -318,9 +319,17 @@ function sheetToObjects(sheetName) {
   if (!sheet || sheet.getLastRow() < 2) return [];
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
+  const tz = Session.getScriptTimeZone();
   return data.slice(1).map(row => {
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = row[i]; });
+    headers.forEach((h, i) => {
+      let v = row[i];
+      // Google Sheets returns date cells as Date objects — convert to YYYY-MM-DD string
+      if (v instanceof Date && !isNaN(v.getTime())) {
+        v = Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+      }
+      obj[h] = v;
+    });
     return obj;
   });
 }
@@ -504,7 +513,7 @@ function currentMonthYearGAS() {
 function issueStopOrder(params, user) {
   if (user.role !== 'admin' && user.role !== 'operator')
     return { success: false, error: 'ไม่มีสิทธิ์' };
-  const { truck_no, driver, reason_type, reason_detail, severity } = params;
+  const { truck_no, driver, reason_type, reason_detail, severity, vio_count } = params;
   if (!truck_no || !reason_type) return { success: false, error: 'ข้อมูลไม่ครบ' };
 
   const ts = new Date().toISOString();
@@ -518,13 +527,19 @@ function issueStopOrder(params, user) {
   const ym = issueDate.substring(0, 7).replace('-', '');
   const order_no = 'SW-' + ym + '-' + seq;
 
+  // Operator ต้องรอ Admin approve, Admin ออกเองได้เลย
+  const approvalStatus = user.role === 'admin' ? 'approved' : 'pending_approval';
+  const approvedBy = user.role === 'admin' ? (user.display_name || user.username) : '';
+  const approvedAt = user.role === 'admin' ? ts : '';
+
   const headers = SHEET_HEADERS['หยุดวิ่ง_Log'];
   appendLog('หยุดวิ่ง_Log', headers, [
     ts, order_no, issueDate, truck_no, driver || '',
     reason_type, reason_detail || '', severity || 'stop_work',
-    'pending', '', '', user.display_name || user.username
+    'pending', '', '', user.display_name || user.username,
+    approvalStatus, approvedBy, approvedAt, '', '', vio_count || 0
   ]);
-  return { success: true, order_no };
+  return { success: true, order_no, approval_status: approvalStatus };
 }
 
 function getStopOrders(params) {
@@ -555,6 +570,31 @@ function updateStopOrder(params, user) {
       const now = new Date().toISOString();
       if (status === 'acknowledged') sheet.getRange(i + 1, ackIdx + 1).setValue(now);
       if (status === 'completed') sheet.getRange(i + 1, compIdx + 1).setValue(now);
+      return { success: true };
+    }
+  }
+  return { success: false, error: 'ไม่พบ order_no' };
+}
+
+function approveStopOrder(params, user) {
+  if (user.role !== 'admin') return { success: false, error: 'ต้องเป็น admin เท่านั้น' };
+  const { order_no, approval_status, approval_evidence_url, signature_url } = params;
+  if (!order_no || !approval_status) return { success: false, error: 'ข้อมูลไม่ครบ' };
+
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('หยุดวิ่ง_Log');
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idx = (h) => headers.indexOf(h);
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][idx('order_no')] === order_no) {
+      const now = new Date().toISOString();
+      sheet.getRange(i+1, idx('approval_status')+1).setValue(approval_status);
+      sheet.getRange(i+1, idx('approved_by')+1).setValue(user.display_name || user.username);
+      sheet.getRange(i+1, idx('approved_at')+1).setValue(now);
+      if (approval_evidence_url) sheet.getRange(i+1, idx('approval_evidence_url')+1).setValue(approval_evidence_url);
+      if (signature_url) sheet.getRange(i+1, idx('signature_url')+1).setValue(signature_url);
       return { success: true };
     }
   }

@@ -1,4 +1,4 @@
-// views/stoporder.js — ระบบออกหนังสือสั่งหยุดวิ่ง
+// views/stoporder.js — ระบบออกหนังสือสั่งหยุดวิ่ง (พร้อม Approval Workflow)
 window.VIEW_STOPORDER = async function render(container) {
   container.innerHTML = `
     <div class="page-title">🚫 ระบบสั่งหยุดวิ่ง</div>
@@ -17,21 +17,20 @@ window.VIEW_STOPORDER = async function render(container) {
       APP.getStopOrders()
     ]);
 
-    const fleet = fleetRes.fleet || {};
-    const trucks = (trucksRes.trucks || []).filter(t => t.active !== false && t.active !== 'FALSE');
+    const fleet     = fleetRes.fleet || {};
+    const trucks    = (trucksRes.trucks || []).filter(t => t.active !== false && t.active !== 'FALSE');
     const violations = violationsRes.records || [];
-    const orders = ordersRes.records || [];
+    const orders    = ordersRes.records || [];
+    const user      = APP.getUserInfo();
 
-    // นับ violations ต่อ truck
     const vioCount = {};
     violations.forEach(v => { vioCount[v.truck_no] = (vioCount[v.truck_no] || 0) + 1; });
 
-    // คำนวณรถที่เข้าเงื่อนไข
     const eligible = calcEligibleTrucks(fleet, trucks, vioCount, today);
 
     renderStopOrderPage(
       document.getElementById('stoporder-content'),
-      eligible, trucks, vioCount, orders, today
+      eligible, trucks, vioCount, orders, today, user
     );
   } catch (e) {
     APP.showError(document.getElementById('stoporder-content'), 'โหลดข้อมูลไม่สำเร็จ: ' + e.message);
@@ -39,86 +38,68 @@ window.VIEW_STOPORDER = async function render(container) {
 };
 
 // ============================================================
-// คำนวณรถที่เข้าเงื่อนไขออกใบสั่งหยุด
-// ============================================================
 function calcEligibleTrucks(fleet, trucks, vioCount, today) {
-  const day  = today.getDate();
-  const year = today.getFullYear();
-  const month = today.getMonth() + 1;
+  const day     = today.getDate();
+  const year    = today.getFullYear();
+  const month   = today.getMonth() + 1;
   const lastDay = APP.getLastDayOfMonth(year, month);
-
-  // deadline วันสุดท้ายของ Week 4 = วันสุดท้ายของเดือน
-  const weekDeadlines = { 1: 7, 2: 14, 3: 21, 4: lastDay };
-
+  const weekDeadlines = { 1:7, 2:14, 3:21, 4:lastDay };
   const eligible = [];
 
   trucks.forEach(t => {
-    const f = fleet[t.truck_no] || {};
+    const f    = fleet[t.truck_no] || {};
     const vios = vioCount[t.truck_no] || 0;
 
-    // ---- เป่ากรอง (blow) weeks ----
     for (let w = 1; w <= 4; w++) {
-      const deadline = weekDeadlines[w];
-      const overdueDays = day - (deadline + 2); // บวก 2 วัน grace
-      if (overdueDays < 0) continue; // ยังไม่ถึงเวลา
-      const blowStatus = f.blow && f.blow[String(w)];
-      if (blowStatus === 'done') continue; // ทำแล้ว
+      const deadline    = weekDeadlines[w];
+      const overdueDays = day - (deadline + 2);
+      if (overdueDays < 0) continue;
+      const status = f.blow && f.blow[String(w)];
+      if (status === 'done') continue;
       eligible.push({
-        truck_no:    t.truck_no,
-        driver:      t.driver,
-        task_type:   'เป่ากรอง',
-        reason_type: 'blow_overdue',
-        cycle:       `Week ${w}`,
-        deadline_day: deadline,
-        overdue_days: overdueDays + 2, // วันที่เกินจริง
-        current_status: blowStatus || 'ไม่มีข้อมูล',
-        vios
+        truck_no: t.truck_no, driver: t.driver,
+        task_type: 'เป่ากรองอากาศ', reason_type: 'blow_overdue',
+        cycle: `Week ${w}`, deadline_day: deadline,
+        overdue_days: overdueDays + 2, current_status: status || 'ไม่มีข้อมูล', vios,
+        severity: vios >= 3 ? 'stop_and_call' : 'stop_work'
       });
     }
 
-    // ---- อัดจาระบี รอบ 1 (deadline วันที่ 15) ----
     if (day >= 17) {
-      const greaseR1 = f.grease && f.grease['1'];
-      if (greaseR1 !== 'done') {
-        eligible.push({
-          truck_no: t.truck_no, driver: t.driver,
-          task_type: 'อัดจาระบี', reason_type: 'grease_overdue',
-          cycle: 'รอบ 1 (10-15)', deadline_day: 15,
-          overdue_days: day - 15, current_status: greaseR1 || 'ไม่มีข้อมูล', vios
-        });
-      }
+      const r1 = f.grease && f.grease['1'];
+      if (r1 !== 'done') eligible.push({
+        truck_no: t.truck_no, driver: t.driver,
+        task_type: 'อัดจาระบี', reason_type: 'grease_overdue',
+        cycle: 'รอบ 1 (10-15)', deadline_day: 15,
+        overdue_days: day - 15, current_status: r1 || 'ไม่มีข้อมูล', vios,
+        severity: vios >= 3 ? 'stop_and_call' : 'stop_work'
+      });
     }
 
-    // ---- อัดจาระบี รอบ 2 (deadline วันสุดท้าย) ----
-    if (day >= lastDay + 2 || (month !== today.getMonth() + 1)) {
-      const greaseR2 = f.grease && f.grease['2'];
-      if (greaseR2 !== 'done') {
-        eligible.push({
-          truck_no: t.truck_no, driver: t.driver,
-          task_type: 'อัดจาระบี', reason_type: 'grease_overdue',
-          cycle: 'รอบ 2 (25-สิ้นเดือน)', deadline_day: lastDay,
-          overdue_days: Math.max(day - lastDay, 2), current_status: greaseR2 || 'ไม่มีข้อมูล', vios
-        });
-      }
+    if (day >= lastDay + 2) {
+      const r2 = f.grease && f.grease['2'];
+      if (r2 !== 'done') eligible.push({
+        truck_no: t.truck_no, driver: t.driver,
+        task_type: 'อัดจาระบี', reason_type: 'grease_overdue',
+        cycle: 'รอบ 2 (25-สิ้นเดือน)', deadline_day: lastDay,
+        overdue_days: day - lastDay, current_status: r2 || 'ไม่มีข้อมูล', vios,
+        severity: vios >= 3 ? 'stop_and_call' : 'stop_work'
+      });
     }
   });
-
-  // กำหนด severity
-  eligible.forEach(e => {
-    e.severity = e.vios >= 3 ? 'stop_and_call' : 'stop_work';
-  });
-
   return eligible;
 }
 
 // ============================================================
-// Render หน้า
-// ============================================================
-function renderStopOrderPage(container, eligible, trucks, vioCount, orders, today) {
-  const pendingOrders = orders.filter(o => o.status === 'pending');
-  const thaiDate = APP.formatThaiDate(today);
+function renderStopOrderPage(container, eligible, trucks, vioCount, orders, today, user) {
+  const isAdmin    = user && user.role === 'admin';
+  const pendingApproval = orders.filter(o => o.approval_status === 'pending_approval');
 
   container.innerHTML = `
+    ${isAdmin && pendingApproval.length > 0
+      ? `<div class="alert alert-danger">🚨 มีใบสั่งหยุดวิ่งรอการ Approve <strong>${pendingApproval.length} ใบ</strong> — เลื่อนลงเพื่อดูและ Approve</div>`
+      : ''}
+
     <!-- Section 1: รถที่เข้าเงื่อนไข -->
     <div class="card">
       <div class="card-title">
@@ -127,36 +108,43 @@ function renderStopOrderPage(container, eligible, trucks, vioCount, orders, toda
       </div>
       ${eligible.length === 0
         ? '<div class="alert alert-success">✅ ไม่มีรถที่เข้าเงื่อนไขในขณะนี้</div>'
-        : renderEligibleTable(eligible)
-      }
+        : renderEligibleTable(eligible)}
     </div>
 
-    <!-- Section 2: ออกใบสั่งหยุดวิ่ง (manual) -->
+    <!-- Section 2: ออกใบสั่งหยุดวิ่ง -->
     <div class="card">
-      <div class="card-title">📝 ออกใบสั่งหยุดวิ่ง (กรอกเอง)</div>
+      <div class="card-title">📝 ออกใบสั่งหยุดวิ่ง</div>
       <div class="form-group">
         <label class="form-label">เบอร์รถ</label>
         <select class="form-control" id="so-truck" onchange="onSoTruckChange()">
           <option value="">-- เลือกรถ --</option>
-          ${trucks.map(t => `<option value="${t.truck_no}" data-driver="${t.driver||''}">${t.truck_no} — ${t.driver||'-'}</option>`).join('')}
+          ${trucks.map(t => `<option value="${t.truck_no}" data-driver="${t.driver||''}" data-vios="${vioCount[t.truck_no]||0}">${t.truck_no} — ${t.driver||'-'}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
         <label class="form-label">คนขับ</label>
-        <input class="form-control" type="text" id="so-driver" placeholder="ชื่อคนขับ">
+        <input class="form-control" type="text" id="so-driver" placeholder="ชื่อคนขับ" readonly>
       </div>
       <div class="form-group">
         <label class="form-label">สาเหตุ</label>
         <select class="form-control" id="so-reason-type">
-          <option value="blow_overdue">เป่ากรองเกินกำหนด</option>
+          <option value="blow_overdue">เป่ากรองอากาศเกินกำหนด</option>
           <option value="grease_overdue">อัดจาระบีเกินกำหนด</option>
-          <option value="drain_overdue">เดรนน้ำเกินกำหนด</option>
-          <option value="accumulated_violations">ละเลยสะสม ≥ 3 ครั้ง</option>
+          <option value="drain_overdue">เดรนน้ำถังลมเกินกำหนด</option>
+          <option value="accumulated_violations">มีการละเลยสะสม ≥ 3 ครั้ง</option>
         </select>
       </div>
       <div class="form-group">
+        <label class="form-label">รอบ / Week ที่เกินกำหนด</label>
+        <input class="form-control" type="text" id="so-cycle" placeholder="เช่น Week 2 / รอบ 1 (10-15)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">เกินกำหนดมา (วัน)</label>
+        <input class="form-control" type="number" id="so-overdue-days" min="1" placeholder="จำนวนวันที่เกิน">
+      </div>
+      <div class="form-group">
         <label class="form-label">รายละเอียดเพิ่มเติม</label>
-        <input class="form-control" type="text" id="so-detail" placeholder="เช่น เป่ากรอง Week 2 เกินกำหนด 3 วัน">
+        <input class="form-control" type="text" id="so-detail" placeholder="หมายเหตุ">
       </div>
       <div class="form-group">
         <label class="form-label">ระดับความรุนแรง</label>
@@ -173,128 +161,149 @@ function renderStopOrderPage(container, eligible, trucks, vioCount, orders, toda
     <div class="card">
       <div class="card-title">
         📋 ประวัติใบสั่งหยุดวิ่งทั้งหมด
-        ${pendingOrders.length > 0 ? `<span class="badge badge-red" style="margin-left:8px">${pendingOrders.length} รอดำเนินการ</span>` : ''}
+        ${pendingApproval.length > 0 ? `<span class="badge badge-red" style="margin-left:8px">${pendingApproval.length} รอ Approve</span>` : ''}
       </div>
       ${orders.length === 0
         ? '<div style="color:var(--text-light);font-size:14px">ยังไม่มีประวัติ</div>'
-        : renderOrderHistory(orders)
-      }
+        : renderOrderHistory(orders, isAdmin)}
     </div>
   `;
 
-  // Store trucks for use in handlers
-  window._soTrucks = trucks;
+  window._soTrucks   = trucks;
   window._soVioCount = vioCount;
 
   window.onSoTruckChange = () => {
     const sel = document.getElementById('so-truck');
     const opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
     document.getElementById('so-driver').value = opt.dataset.driver || '';
+    const vios = parseInt(opt.dataset.vios || '0');
+    if (vios >= 3) document.getElementById('so-severity').value = 'stop_and_call';
   };
 }
 
 function renderEligibleTable(eligible) {
-  const rows = eligible.map(e => {
-    const sevBadge = e.severity === 'stop_and_call'
-      ? '<span class="badge badge-red">🚨 หยุด+เรียกพบ</span>'
-      : '<span class="badge badge-orange">🛑 หยุดทำทันที</span>';
-    return `
-      <tr>
-        <td><strong>${e.truck_no}</strong></td>
-        <td>${e.driver || '-'}</td>
-        <td>${e.task_type} ${e.cycle}</td>
-        <td style="color:var(--danger);font-weight:600">+${e.overdue_days} วัน</td>
-        <td>${e.vios > 0 ? `<span class="badge badge-red">${e.vios} ครั้ง</span>` : '-'}</td>
-        <td>${sevBadge}</td>
-        <td>
-          <button class="btn btn-sm btn-primary"
-            onclick="quickIssueOrder('${e.truck_no}','${(e.driver||'').replace(/'/g,"\\'")}','${e.reason_type}','${e.task_type} ${e.cycle} เกินกำหนด ${e.overdue_days} วัน','${e.severity}')">
-            📄 ออกใบ
-          </button>
-        </td>
-      </tr>`;
-  }).join('');
+  const sevBadge = (s) => s === 'stop_and_call'
+    ? '<span class="badge badge-red">🚨 หยุด+เรียกพบ</span>'
+    : '<span class="badge badge-orange">🛑 ทำทันที</span>';
 
   return `
     <div style="overflow-x:auto">
       <table class="fleet-table" style="width:100%;min-width:600px">
-        <thead>
-          <tr>
-            <th>รถ</th><th>คนขับ</th><th>งาน/รอบ</th>
-            <th>เกินกำหนด</th><th>ประวัติ</th>
-            <th>ความรุนแรง</th><th>ออกใบ</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
+        <thead><tr>
+          <th>รถ</th><th>คนขับ</th><th>งาน / รอบ</th>
+          <th>เกินกำหนด</th><th>ละเลยสะสม</th><th>ระดับ</th><th>ออกใบ</th>
+        </tr></thead>
+        <tbody>
+          ${eligible.map(e => `<tr>
+            <td><strong>${e.truck_no}</strong></td>
+            <td>${e.driver||'-'}</td>
+            <td>${e.task_type} ${e.cycle}</td>
+            <td style="color:var(--danger);font-weight:600">+${e.overdue_days} วัน</td>
+            <td>${e.vios > 0 ? `<span class="badge badge-red">${e.vios} ครั้ง</span>` : '-'}</td>
+            <td>${sevBadge(e.severity)}</td>
+            <td>
+              <button class="btn btn-sm btn-primary"
+                onclick="quickIssueOrder('${e.truck_no}','${(e.driver||'').replace(/'/g,"\\'")}','${e.reason_type}','${e.cycle}',${e.overdue_days},'${e.severity}')">
+                📄 ออกใบ
+              </button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
       </table>
     </div>`;
 }
 
-function renderOrderHistory(orders) {
-  const statusLabel = { pending: '⏳ รอดำเนินการ', acknowledged: '✅ รับทราบแล้ว', completed: '🏁 เสร็จสิ้น', cancelled: '❌ ยกเลิก' };
-  const statusClass = { pending: 'badge-red', acknowledged: 'badge-orange', completed: 'badge-green', cancelled: 'badge-gray' };
+function renderOrderHistory(orders, isAdmin) {
+  const approvalLabel = {
+    'pending_approval': '⏳ รอ Admin Approve',
+    'approved':         '✅ Approved',
+    'rejected':         '❌ ปฏิเสธ'
+  };
+  const approvalClass = {
+    'pending_approval': 'badge-orange',
+    'approved':         'badge-green',
+    'rejected':         'badge-red'
+  };
 
   return `
     <div style="overflow-x:auto">
-      <table class="fleet-table" style="width:100%;min-width:560px">
-        <thead>
-          <tr><th>เลขที่</th><th>วันที่</th><th>รถ</th><th>คนขับ</th><th>สาเหตุ</th><th>สถานะ</th><th>จัดการ</th></tr>
-        </thead>
+      <table class="fleet-table" style="width:100%;min-width:600px">
+        <thead><tr>
+          <th>เลขที่</th><th>วันที่</th><th>รถ</th><th>คนขับ</th>
+          <th>สาเหตุ</th><th>Approve</th><th>จัดการ</th>
+        </tr></thead>
         <tbody>
-          ${orders.slice().reverse().map(o => `
-            <tr>
-              <td><small>${o.order_no}</small></td>
-              <td><small>${o.issue_date||'-'}</small></td>
-              <td><strong>${o.truck_no}</strong></td>
-              <td>${o.driver||'-'}</td>
-              <td style="font-size:12px">${o.reason_detail||o.reason_type||'-'}</td>
-              <td><span class="badge ${statusClass[o.status]||'badge-gray'}">${statusLabel[o.status]||o.status}</span></td>
-              <td style="white-space:nowrap">
-                <button class="btn btn-sm btn-outline" onclick="showOrderDoc('${o.order_no}')">🖨️</button>
-                ${o.status === 'pending' ? `<button class="btn btn-sm btn-outline" onclick="changeOrderStatus('${o.order_no}','acknowledged')">รับทราบ</button>` : ''}
-                ${o.status === 'acknowledged' ? `<button class="btn btn-sm btn-outline" onclick="changeOrderStatus('${o.order_no}','completed')">เสร็จ</button>` : ''}
-              </td>
-            </tr>`).join('')}
+          ${orders.slice().reverse().map(o => `<tr>
+            <td><small>${o.order_no||''}</small></td>
+            <td><small>${o.issue_date||''}</small></td>
+            <td><strong>${o.truck_no||''}</strong></td>
+            <td>${o.driver||'-'}</td>
+            <td style="font-size:12px">${o.reason_detail||o.reason_type||''}</td>
+            <td><span class="badge ${approvalClass[o.approval_status]||'badge-gray'}">${approvalLabel[o.approval_status]||o.approval_status||'-'}</span></td>
+            <td style="white-space:nowrap">
+              ${o.approval_status === 'approved'
+                ? `<button class="btn btn-sm btn-primary" onclick="printOrderDoc('${o.order_no}')">🖨️ พิมพ์</button>`
+                : ''}
+              ${isAdmin && o.approval_status === 'pending_approval'
+                ? `<button class="btn btn-sm btn-outline" onclick="showApproveModal('${o.order_no}')">✅ Approve</button>`
+                : ''}
+            </td>
+          </tr>`).join('')}
         </tbody>
       </table>
     </div>`;
 }
 
 // ============================================================
-// Action Handlers
-// ============================================================
-
-window.quickIssueOrder = async function(truck_no, driver, reason_type, detail, severity) {
+// Quick-fill form from eligible table
+window.quickIssueOrder = function(truck_no, driver, reason_type, cycle, overdueDays, severity) {
   document.getElementById('so-truck').value = truck_no;
   document.getElementById('so-driver').value = driver;
   document.getElementById('so-reason-type').value = reason_type;
-  document.getElementById('so-detail').value = detail;
+  document.getElementById('so-cycle').value = cycle;
+  document.getElementById('so-overdue-days').value = overdueDays;
   document.getElementById('so-severity').value = severity;
-  // Scroll to form
   document.getElementById('so-truck').scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
 window.submitStopOrder = async function() {
-  const truck_no = document.getElementById('so-truck').value;
-  const driver   = document.getElementById('so-driver').value;
+  const truck_no    = document.getElementById('so-truck').value;
+  const driver      = document.getElementById('so-driver').value;
   const reason_type = document.getElementById('so-reason-type').value;
-  const reason_detail = document.getElementById('so-detail').value;
-  const severity = document.getElementById('so-severity').value;
-  const msgEl = document.getElementById('so-msg');
+  const cycle       = document.getElementById('so-cycle').value;
+  const overdue     = document.getElementById('so-overdue-days').value;
+  const detail      = document.getElementById('so-detail').value;
+  const severity    = document.getElementById('so-severity').value;
+  const msgEl       = document.getElementById('so-msg');
 
   if (!truck_no) { msgEl.innerHTML = '<div class="alert alert-danger">กรุณาเลือกเบอร์รถ</div>'; return; }
+
+  const vioCount = window._soVioCount && window._soVioCount[truck_no] || 0;
+  const reasonLabels = {
+    'blow_overdue':              'เป่ากรองอากาศ',
+    'grease_overdue':            'อัดจาระบี',
+    'drain_overdue':             'เดรนน้ำถังลม',
+    'accumulated_violations':    'ละเลยสะสม'
+  };
+  const taskText = reasonLabels[reason_type] || reason_type;
+  const detailFull = `ไม่ดำเนินการ${taskText}${cycle ? ' ' + cycle : ''}${overdue ? ' เกินกำหนด ' + overdue + ' วัน' : ''}${detail ? ' — ' + detail : ''}`;
 
   const btn = document.querySelector('[onclick="submitStopOrder()"]');
   APP.setButtonLoading(btn, true);
   msgEl.innerHTML = '';
 
   try {
-    const res = await APP.issueStopOrder({ truck_no, driver, reason_type, reason_detail, severity });
+    const res = await APP.issueStopOrder({ truck_no, driver, reason_type, reason_detail: detailFull, severity, vio_count: vioCount });
     APP.setButtonLoading(btn, false);
     if (res.success) {
-      msgEl.innerHTML = `<div class="alert alert-success">✅ ออกใบสั่งหยุดวิ่งสำเร็จ — เลขที่ <strong>${res.order_no}</strong></div>`;
-      // Show print modal
-      showNewOrderDoc(res.order_no, truck_no, driver, reason_type, reason_detail, severity);
+      const approvedImmediately = res.approval_status === 'approved';
+      msgEl.innerHTML = `<div class="alert alert-success">
+        ✅ ออกใบสั่งหยุดวิ่งสำเร็จ — เลขที่ <strong>${res.order_no}</strong><br>
+        ${approvedImmediately ? 'สามารถพิมพ์ได้ทันที' : '⏳ รอ Admin อนุมัติก่อนพิมพ์'}
+      </div>`;
+      // Reload
+      setTimeout(() => window.VIEW_STOPORDER(document.getElementById('app-container')), 1200);
     } else {
       msgEl.innerHTML = `<div class="alert alert-danger">${res.error}</div>`;
     }
@@ -304,95 +313,212 @@ window.submitStopOrder = async function() {
   }
 };
 
-window.changeOrderStatus = async function(order_no, status) {
-  try {
-    await APP.updateStopOrder(order_no, status);
-    // Reload page
-    window.VIEW_STOPORDER(document.getElementById('app-container'));
-  } catch (e) {
-    alert('เกิดข้อผิดพลาด: ' + e.message);
-  }
-};
+// ============================================================
+// Approve modal (Admin only)
+window.showApproveModal = async function(order_no) {
+  const user = APP.getUserInfo();
+  if (!user || user.role !== 'admin') return;
 
-window.showOrderDoc = async function(order_no) {
+  // โหลด order detail
   const res = await APP.getStopOrders();
   const order = (res.records || []).find(o => o.order_no === order_no);
   if (!order) return;
-  const sevLabel = order.severity === 'stop_and_call' ? 'stop_and_call' : 'stop_work';
-  renderOrderModal(order.order_no, order.truck_no, order.driver, order.reason_type, order.reason_detail, sevLabel, order.issue_date, order.issued_by, order.vio_count);
-};
 
-function showNewOrderDoc(order_no, truck_no, driver, reason_type, detail, severity) {
-  const today = APP.todayISO();
-  const user = APP.getUserInfo();
-  renderOrderModal(order_no, truck_no, driver, reason_type, detail, severity, today, user ? user.display_name : '');
-}
+  // อ่านลายเซ็นต์จาก localStorage
+  const sigKey = 'sig_' + user.username;
+  const sigB64 = localStorage.getItem(sigKey);
 
-function renderOrderModal(order_no, truck_no, driver, reason_type, detail, severity, issue_date, issued_by) {
-  const reasonLabels = {
-    'blow_overdue': 'ไม่เป่ากรองอากาศตามกำหนด',
-    'grease_overdue': 'ไม่อัดจาระบีตามกำหนด',
-    'drain_overdue': 'ไม่เดรนน้ำถังลมตามกำหนด',
-    'accumulated_violations': 'มีการละเลยการบำรุงรักษาสะสม'
-  };
-  const reasonText = reasonLabels[reason_type] || reason_type;
-  const detailText = detail || reasonText;
-
-  // Format Thai date
-  const dateObj = new Date(issue_date || APP.todayISO());
-  const thaiDate = APP.formatThaiDate(dateObj);
-
-  const stopText = severity === 'stop_and_call'
-    ? `จึงมีคำสั่งให้หยุดวิ่งงานโดยทันที และรายงานตัวที่สำนักงานก่อนเข้าทำงาน\n\nเนื่องจากมีประวัติการละเลยการบำรุงรักษาสะสมเกินกว่า 3 ครั้ง\nจึงให้หยุดวิ่งงาน และรายงานตัวที่สำนักงานก่อนเริ่มงาน\nทั้งนี้ก่อนออกวิ่งงาน ให้ดำเนินการบำรุงรักษาให้เสร็จสิ้นก่อน`
-    : `จึงมีคำสั่งให้หยุดวิ่งงานโดยทันที และดำเนินการ${reasonText}\nให้เสร็จสิ้นก่อนออกวิ่งงาน`;
-
-  const html = `
-    <div class="stop-order-modal-backdrop" id="stop-order-modal">
-      <div class="stop-order-doc-wrap">
-        <div class="stop-order-doc">
-          <div class="doc-header-row">
-            <div>
-              <div class="doc-company">บริษัท __________________ จำกัด</div>
-              <div style="font-size:13px;color:#555">ฝ่ายซ่อมบำรุงและยานพาหนะ</div>
-            </div>
-            <div style="text-align:right;font-size:13px">
-              <div>วันที่ ${thaiDate}</div>
-            </div>
-          </div>
-
-          <div class="doc-title">หนังสือสั่งหยุดวิ่งงาน</div>
-          <div class="doc-no">เลขที่: ${order_no}</div>
-
-          <div class="doc-body">เรื่อง: สั่งหยุดวิ่งงานเพื่อดำเนินการบำรุงรักษา
-
-เรียน นาย/นาง <strong>${driver || '___________'}</strong>
-คนขับรถหมายเลข <strong>${truck_no}</strong>
-
-          ด้วยปรากฏว่าท่านละเลย${detailText}
-
-${stopText}
-
-          จึงเรียนมาเพื่อทราบและดำเนินการโดยเร่งด่วน</div>
-
-          <div class="doc-signature">
-            <div>ลงชื่อ ___________________________</div>
-            <div style="font-size:13px;color:#555">( ${issued_by || '________________'} )</div>
-            <div style="font-size:13px;color:#555">ผู้ออกคำสั่ง / ผู้จัดการ</div>
-          </div>
-
-          <hr style="margin:20px 0;border-color:#ddd">
-          <div style="font-size:12px;color:#888;text-align:center">
-            รับทราบคำสั่ง: __________________ วันที่ __________
-          </div>
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="approve-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;display:flex;align-items:center;justify-content:center;padding:16px">
+      <div style="background:white;border-radius:10px;padding:24px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto">
+        <div style="font-size:16px;font-weight:700;margin-bottom:16px">✅ Approve ใบสั่งหยุดวิ่ง</div>
+        <div class="alert alert-info" style="margin-bottom:12px">
+          เลขที่: <strong>${order.order_no}</strong><br>
+          รถ: <strong>${order.truck_no}</strong> คุณ${order.driver||''}<br>
+          สาเหตุ: ${order.reason_detail||''}
         </div>
-
-        <div class="doc-actions">
-          <button class="btn btn-primary" onclick="window.print()">🖨️ พิมพ์</button>
-          <button class="btn btn-outline" onclick="document.getElementById('stop-order-modal').remove()">✕ ปิด</button>
+        ${sigB64
+          ? `<div style="margin-bottom:12px"><div style="font-size:13px;color:#7f8c8d;margin-bottom:4px">ลายเซ็นต์ของคุณ:</div><img src="${sigB64}" style="max-height:60px;border:1px solid #ddd;border-radius:4px"></div>`
+          : `<div class="alert alert-warning">⚠️ ยังไม่มีลายเซ็นต์ — ไปตั้งค่าใน Admin → จัดการลายเซ็นต์</div>`}
+        <div class="form-group">
+          <label class="form-label">แนบรูปหลักฐาน (ไม่บังคับ)</label>
+          <input type="file" class="form-control" id="approve-evidence" accept="image/*">
+        </div>
+        <div id="approve-msg"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" onclick="confirmApprove('${order_no}')">✅ Approve</button>
+          <button class="btn btn-outline" style="background:#fdedec;color:#c0392b" onclick="confirmReject('${order_no}')">❌ ปฏิเสธ</button>
+          <button class="btn btn-outline" onclick="document.getElementById('approve-modal').remove()">ยกเลิก</button>
         </div>
       </div>
-    </div>
-  `;
+    </div>`);
+};
 
-  document.body.insertAdjacentHTML('beforeend', html);
+window.confirmApprove = async function(order_no) {
+  const user = APP.getUserInfo();
+  const msgEl = document.getElementById('approve-msg');
+  const sigB64 = localStorage.getItem('sig_' + user.username) || '';
+
+  // Upload evidence if file selected
+  let evidenceUrl = '';
+  const fileEl = document.getElementById('approve-evidence');
+  if (fileEl && fileEl.files[0]) {
+    try {
+      const res = await uploadFileAsImage(fileEl.files[0], 'approve', APP.todayISO());
+      evidenceUrl = res.url || '';
+    } catch (e) {}
+  }
+
+  try {
+    await APP.approveStopOrder({ order_no, approval_status: 'approved', approval_evidence_url: evidenceUrl, signature_url: sigB64 });
+    document.getElementById('approve-modal').remove();
+    window.VIEW_STOPORDER(document.getElementById('app-container'));
+  } catch (e) {
+    if (msgEl) msgEl.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+  }
+};
+
+window.confirmReject = async function(order_no) {
+  if (!confirm('ยืนยันการปฏิเสธใบสั่งหยุดวิ่งนี้?')) return;
+  try {
+    await APP.approveStopOrder({ order_no, approval_status: 'rejected' });
+    document.getElementById('approve-modal').remove();
+    window.VIEW_STOPORDER(document.getElementById('app-container'));
+  } catch (e) { alert(e.message); }
+};
+
+// ============================================================
+// Print — A4 standalone window
+window.printOrderDoc = async function(order_no) {
+  const res = await APP.getStopOrders();
+  const order = (res.records || []).find(o => o.order_no === order_no);
+  if (!order) return;
+  openA4PrintWindow(buildDocHTML(order));
+};
+
+function openA4PrintWindow(docHtml) {
+  const win = window.open('', '_blank', 'width=820,height=1160');
+  if (!win) { alert('กรุณาอนุญาต Popup เพื่อพิมพ์'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="th"><head>
+  <meta charset="UTF-8">
+  <style>
+    @page { size: A4 portrait; margin: 20mm 18mm; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Sarabun','Arial',sans-serif; font-size:14pt; color:#000; background:white; }
+    .doc { max-width:170mm; margin:0 auto; }
+    .header-row { display:flex; align-items:center; gap:16px; margin-bottom:16px; border-bottom:2px solid #1a3a5c; padding-bottom:12px; }
+    .logo-wrap img { height:64px; width:auto; }
+    .company-info { flex:1; }
+    .company-name { font-size:16pt; font-weight:700; color:#1a3a5c; line-height:1.3; }
+    .company-sub { font-size:10pt; color:#555; }
+    .doc-date { text-align:right; font-size:11pt; color:#555; white-space:nowrap; }
+    .doc-title { text-align:center; font-size:18pt; font-weight:700; color:#1a3a5c; margin:20px 0 4px; }
+    .doc-no { text-align:center; font-size:11pt; color:#777; margin-bottom:20px; }
+    .doc-body { line-height:2; font-size:13pt; text-align:justify; }
+    .doc-body p { margin-bottom:12px; text-indent:2em; }
+    .doc-body p:first-child { text-indent:0; }
+    .highlight { font-weight:700; color:#1a3a5c; }
+    .severe-box { border:2px solid #e74c3c; border-radius:6px; padding:10px 14px; margin:16px 0; background:#fdedec; font-size:12pt; }
+    .signature-section { margin-top:40px; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+    .sig-line { border-bottom:1px dotted #555; width:200px; margin-bottom:4px; min-height:50px; display:flex; align-items:center; justify-content:center; }
+    .sig-line img { max-height:50px; max-width:180px; }
+    .sig-label { text-align:center; width:200px; font-size:11pt; }
+    .ack-section { margin-top:30px; border-top:1px solid #ccc; padding-top:14px; font-size:11pt; color:#555; }
+    .no-print { display:none; }
+    @media screen { body { padding:20px; background:#f0f0f0; } .doc { background:white; padding:20mm 18mm; box-shadow:0 2px 12px rgba(0,0,0,0.15); } .no-print { display:block; margin-bottom:16px; } }
+  </style>
+  </head><body>
+  <div class="no-print" style="text-align:center">
+    <button onclick="window.print()" style="padding:8px 20px;background:#1a3a5c;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨️ พิมพ์เอกสาร</button>
+    <button onclick="window.close()" style="margin-left:8px;padding:8px 20px;background:#7f8c8d;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px">✕ ปิด</button>
+  </div>
+  <div class="doc">${docHtml}</div>
+  </body></html>`);
+  win.document.close();
+}
+
+function buildDocHTML(order) {
+  const thaiMonths = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  const dateObj   = order.issue_date ? new Date(order.issue_date) : new Date();
+  const thaiDate  = `${dateObj.getDate()} ${thaiMonths[dateObj.getMonth()+1]} ${dateObj.getFullYear()+543}`;
+  const isSevere  = order.severity === 'stop_and_call';
+  const vios      = parseInt(order.vio_count || 0);
+
+  const reasonLabels = {
+    'blow_overdue':           'เป่ากรองอากาศ',
+    'grease_overdue':         'อัดจาระบี',
+    'drain_overdue':          'เดรนน้ำถังลม',
+    'accumulated_violations': 'บำรุงรักษายานพาหนะ'
+  };
+  const taskText = reasonLabels[order.reason_type] || order.reason_type || '';
+
+  // Signature section
+  const sigHtml = order.signature_url
+    ? `<div class="sig-line"><img src="${order.signature_url}" alt="ลายเซ็นต์"></div>`
+    : `<div class="sig-line"></div>`;
+
+  return `
+    <div class="header-row">
+      <div class="logo-wrap"><img src="Logo.png" onerror="this.style.display='none'"></div>
+      <div class="company-info">
+        <div class="company-name">บริษัท ส.ศิวโรจน์ ขนส่ง จำกัด</div>
+        <div class="company-sub">ฝ่ายซ่อมบำรุงและยานพาหนะ</div>
+      </div>
+      <div class="doc-date">วันที่ ${thaiDate}</div>
+    </div>
+
+    <div class="doc-title">หนังสือสั่งหยุดวิ่งงาน</div>
+    <div class="doc-no">เลขที่ ${order.order_no}</div>
+
+    <div class="doc-body">
+      <p><span class="highlight">เรื่อง</span>&nbsp; คำสั่งให้หยุดวิ่งงานและดำเนินการบำรุงรักษายานพาหนะ</p>
+      <p><span class="highlight">เรียน</span>&nbsp; คุณ${order.driver||'___________'}&nbsp; คนขับรถหมายเลข <span class="highlight">${order.truck_no}</span></p>
+
+      <p>ด้วยปรากฏว่า คุณ${order.driver||'___________'} คนขับรถหมายเลข <span class="highlight">${order.truck_no}</span>
+      ได้ละเลยการดำเนินการ<span class="highlight">${order.reason_detail||taskText}</span>
+      ซึ่งขัดต่อระเบียบการบำรุงรักษายานพาหนะของบริษัท ส.ศิวโรจน์ ขนส่ง จำกัด อย่างชัดเจน</p>
+
+      ${!isSevere ? `
+      <p>จึงมีคำสั่งให้ท่านหยุดวิ่งงานโดยทันที และดำเนินการ<span class="highlight">${taskText}</span>
+      ให้แล้วเสร็จก่อนออกวิ่งงาน ทั้งนี้ให้มีผลตั้งแต่วันที่ที่ออกคำสั่งนี้เป็นต้นไป
+      จนกว่าจะดำเนินการบำรุงรักษาตามที่กำหนดเสร็จสิ้น</p>
+      ` : `
+      <div class="severe-box">🚨 กรณีละเลยสะสม — ท่านมีประวัติการละเลยการบำรุงรักษาสะสมจำนวน <strong>${vios > 0 ? vios : 'หลาย'} ครั้ง</strong>
+      ซึ่งถือเป็นการกระทำผิดซ้ำ จึงมีคำสั่งให้ท่านหยุดวิ่งงานโดยทันที
+      และให้รายงานตัวที่สำนักงานก่อนเริ่มทำงานทุกครั้ง พร้อมดำเนินการบำรุงรักษาให้เสร็จสิ้นก่อนออกวิ่งงาน</div>
+      <p>ทั้งนี้ หากท่านยังคงละเลยอีก บริษัทฯ จะดำเนินการตามมาตรการทางวินัยขั้นสูงสุด
+      ตามระเบียบของบริษัทต่อไป</p>
+      `}
+
+      <p>จึงเรียนมาเพื่อทราบและดำเนินการโดยเร่งด่วน</p>
+    </div>
+
+    <div class="signature-section">
+      <div>ลงชื่อ</div>
+      ${sigHtml}
+      <div class="sig-label">(${order.approved_by||order.issued_by||'____________________'})</div>
+      <div class="sig-label">ผู้ออกคำสั่ง / ผู้จัดการฝ่ายซ่อมบำรุง</div>
+      ${order.approved_at ? `<div class="sig-label" style="font-size:10pt;color:#777">วันที่ Approve: ${order.approved_at.substring(0,10)}</div>` : ''}
+    </div>
+
+    <div class="ack-section">
+      รับทราบคำสั่ง:&nbsp;&nbsp;&nbsp; ลงชื่อ ____________________________
+      &nbsp;&nbsp;&nbsp;&nbsp; วันที่ ________________
+    </div>`;
+}
+
+// Helper: upload file for approval evidence
+async function uploadFileAsImage(file, prefix, date) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target.result.split(',')[1];
+      try {
+        const res = await APP.uploadImage(base64, file.type, 'approve', prefix, date);
+        if (res.success) resolve(res);
+        else reject(new Error(res.error));
+      } catch (err) { reject(err); }
+    };
+    reader.readAsDataURL(file);
+  });
 }

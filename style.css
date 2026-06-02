@@ -625,6 +625,10 @@ tr:last-child td { border-bottom: none; }
 .doc-signature { margin-top: 48px; text-align: right; line-height: 2.2; }
 .doc-actions { display: flex; gap: 8px; margin-top: 16px; }
 
+/* ==================== SIGNATURE CANVAS ==================== */
+
+#sig-canvas { display: block; }
+
 /* ==================== PRINT ==================== */
 
 @media print {
@@ -633,10 +637,4 @@ tr:last-child td { border-bottom: none; }
   #app-container { max-width: 100%; padding: 0; }
   .btn, .doc-actions { display: none !important; }
   .card { box-shadow: none; border: 1px solid #ccc; }
-  .stop-order-modal-backdrop {
-    position: static; background: none; padding: 0;
-  }
-  .stop-order-doc-wrap {
-    box-shadow: none; border-radius: 0; max-height: none; padding: 0;
-  }
 }
