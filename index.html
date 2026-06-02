@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ระบบบันทึกการบำรุงรักษารถ - เป่ากรอง อัดจาระบี เดรนน้ำถังลม">
+  <title>Filter-Grease | ระบบบำรุงรักษารถ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav id="main-nav" class="hidden">
+  <span class="nav-brand">⚙️ Filter-Grease</span>
+  <a class="nav-link" href="#dashboard">หน้าหลัก</a>
+  <a class="nav-link" href="#blow">เป่ากรอง</a>
+  <a class="nav-link" href="#grease">อัดจาระบี</a>
+  <a class="nav-link" href="#drain">เดรนน้ำ</a>
+  <a class="nav-link" href="#followup">โทรตาม</a>
+  <a class="nav-link" href="#submit-report">ส่งรายงาน</a>
+  <a class="nav-link" href="#history">ประวัติ</a>
+  <a class="nav-link" href="#violations">มาตรการ</a>
+  <a class="nav-link" href="#standards">มาตรฐาน</a>
+  <a class="nav-link" href="#admin" id="nav-admin" style="display:none">Admin</a>
+  <span class="nav-spacer"></span>
+  <span id="nav-user"></span>
+  <button class="btn-logout" onclick="APP.logout(); window.location.hash='#login'">ออกจากระบบ</button>
+</nav>
+
+<main id="app-container">
+  <div class="loading"><div class="spinner"></div><p>กำลังโหลด...</p></div>
+</main>
+
+<script src="api.js"></script>
+<script src="app.js"></script>
+
+<script>
+// Inline view loader (fallback when ES modules not supported via file://)
+// Views are loaded as scripts dynamically
+const VIEW_SCRIPTS = {
+  '#login': 'views/login.js',
+  '#dashboard': 'views/dashboard.js',
+  '#blow': 'views/blowing.js',
+  '#grease': 'views/greasing.js',
+  '#drain': 'views/drain.js',
+  '#followup': 'views/followup.js',
+  '#submit-report': 'views/submit-report.js',
+  '#report-history': 'views/report-history.js',
+  '#history': 'views/report.js',
+  '#violations': 'views/violations.js',
+  '#standards': 'views/standards.js',
+  '#admin': 'views/admin.js',
+};
+
+const loadedScripts = {};
+
+async function loadView(hash) {
+  const src = VIEW_SCRIPTS[hash];
+  if (!src) return null;
+  if (!loadedScripts[src]) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    loadedScripts[src] = true;
+  }
+  return window['VIEW_' + hash.replace('#', '').replace('-', '_').toUpperCase()];
+}
+
+// Override navigate from app.js with script-tag version
+async function navigate() {
+  const hash = window.location.hash || '#dashboard';
+  const container = document.getElementById('app-container');
+
+  if (hash !== '#login' && !APP.isLoggedIn()) {
+    window.location.hash = '#login';
+    return;
+  }
+  if (hash === '#login' && APP.isLoggedIn()) {
+    window.location.hash = '#dashboard';
+    return;
+  }
+
+  // Update nav
+  const nav = document.getElementById('main-nav');
+  const user = APP.getUserInfo();
+  if (user) {
+    nav.classList.remove('hidden');
+    document.getElementById('nav-user').textContent = user.display_name;
+    const adminLink = document.getElementById('nav-admin');
+    if (adminLink) adminLink.style.display = user.role === 'admin' ? '' : 'none';
+  } else {
+    nav.classList.add('hidden');
+  }
+
+  document.querySelectorAll('.nav-link').forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === hash);
+  });
+
+  APP.showLoading(container);
+
+  try {
+    const renderFn = await loadView(hash);
+    if (renderFn) renderFn(container);
+    else container.innerHTML = '<div class="alert alert-danger">ไม่พบหน้านี้</div>';
+  } catch (e) {
+    APP.showError(container, `เกิดข้อผิดพลาด: ${e.message}`);
+    console.error(e);
+  }
+}
+
+window.addEventListener('hashchange', navigate);
+window.addEventListener('load', navigate);
+</script>
+
+</body>
+</html>
