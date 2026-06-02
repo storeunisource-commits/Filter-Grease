@@ -168,7 +168,8 @@ window.APP = {
   getTrucks, updateTruck, saveBlow, saveGreasing, saveDrain, saveCall,
   saveViolation, saveReport, uploadImage,
   getHistory, getStats, getDashboardFull, getCompare, getViolations, getReportHistory, getFleetStatus,
-  getTrucksCached, preWarm, bulkImport,
+  getTrucksCached, preWarm,
+  issueStopOrder, getStopOrders, updateStopOrder,
   getUsers, addUser, deleteUser, resetPassword,
   login, logout, isLoggedIn, getUserInfo,
   // Date

@@ -50,7 +50,9 @@ function handleRequest(e) {
       case 'deleteuser':       return respond(deleteUser(params, user));
       case 'resetpassword':    return respond(resetPassword(params, user));
       case 'updatetruck':      return respond(updateTruck(params, user));
-      case 'bulkimport':       return respond(bulkImport(params, user));
+      case 'issuestoporder':   return respond(issueStopOrder(params, user));
+      case 'getstoporders':    return respond(getStopOrders(params));
+      case 'updatestoporder':  return respond(updateStopOrder(params, user));
       default: return respond({ success: false, error: 'Unknown action: ' + action });
     }
   } catch (err) {
@@ -74,7 +76,8 @@ const SHEET_HEADERS = {
   'เดรนน้ำ_Log':   ['timestamp','date','truck_no','driver','status','action_status','action_datetime','week','note','image_url','recorded_by'],
   'โทรตาม_Log':    ['timestamp','date','truck_no','driver','task_type','call_result','note','called_by'],
   'ละเลย_Log':     ['timestamp','date','truck_no','driver','task_type','cycle','violation_type','penalty','recorded_by'],
-  'รายงาน_Log':    ['timestamp','report_type','report_cycle','week','month_year','sent_date','sent_by','on_time','note']
+  'รายงาน_Log':    ['timestamp','report_type','report_cycle','week','month_year','sent_date','sent_by','on_time','note'],
+  'หยุดวิ่ง_Log':  ['timestamp','order_no','issue_date','truck_no','driver','reason_type','reason_detail','severity','status','acknowledged_at','completed_at','issued_by']
 };
 
 function initSheets() {
@@ -496,60 +499,66 @@ function currentMonthYearGAS() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 
-// ==================== BULK IMPORT (from Excel history) ====================
+// ==================== STOP WORK ORDER ====================
 
-function bulkImport(params, user) {
-  if (user.role !== 'admin') return { success: false, error: 'ไม่มีสิทธิ์ — ต้องเป็น admin' };
-  const { records, type } = params;
-  if (!records || !Array.isArray(records) || records.length === 0)
-    return { success: false, error: 'ไม่มีข้อมูล records' };
-  if (type !== 'blow' && type !== 'grease')
-    return { success: false, error: 'type ต้องเป็น blow หรือ grease' };
+function issueStopOrder(params, user) {
+  if (user.role !== 'admin' && user.role !== 'operator')
+    return { success: false, error: 'ไม่มีสิทธิ์' };
+  const { truck_no, driver, reason_type, reason_detail, severity } = params;
+  if (!truck_no || !reason_type) return { success: false, error: 'ข้อมูลไม่ครบ' };
 
-  let imported = 0, failed = 0;
   const ts = new Date().toISOString();
+  const issueDate = ts.substring(0, 10);
 
-  records.forEach(function(r) {
-    try {
-      if (type === 'blow') {
-        const headers = SHEET_HEADERS['เป่ากรอง_Log'];
-        appendLog('เป่ากรอง_Log', headers, [
-          ts,
-          r.date,
-          r.truck_no,
-          r.driver || '',
-          'ใช้งาน',
-          r.action_status || 'done',
-          r.action_datetime || r.date,
-          r.week || '',
-          r.note || '',
-          '',
-          '[import]'
-        ]);
-      } else {
-        const headers = SHEET_HEADERS['อัดจาระบี_Log'];
-        appendLog('อัดจาระบี_Log', headers, [
-          ts,
-          r.date,
-          r.truck_no,
-          r.driver || '',
-          'ใช้งาน',
-          r.action_status || 'done',
-          r.action_datetime || r.date,
-          r.cycle || '',
-          r.month_year || '',
-          r.note || '',
-          '',
-          '[import]'
-        ]);
-      }
-      imported++;
-    } catch (e) {
-      failed++;
+  // สร้าง order_no แบบ SW-YYYYMM-NNN
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('หยุดวิ่ง_Log');
+  const lastRow = sheet.getLastRow();
+  const seq = String(Math.max(lastRow, 1)).padStart(3, '0');
+  const ym = issueDate.substring(0, 7).replace('-', '');
+  const order_no = 'SW-' + ym + '-' + seq;
+
+  const headers = SHEET_HEADERS['หยุดวิ่ง_Log'];
+  appendLog('หยุดวิ่ง_Log', headers, [
+    ts, order_no, issueDate, truck_no, driver || '',
+    reason_type, reason_detail || '', severity || 'stop_work',
+    'pending', '', '', user.display_name || user.username
+  ]);
+  return { success: true, order_no };
+}
+
+function getStopOrders(params) {
+  let records = sheetToObjects('หยุดวิ่ง_Log');
+  if (params && params.truck_no) records = records.filter(r => r.truck_no === params.truck_no);
+  if (params && params.status) records = records.filter(r => r.status === params.status);
+  return { success: true, records };
+}
+
+function updateStopOrder(params, user) {
+  if (user.role !== 'admin' && user.role !== 'operator')
+    return { success: false, error: 'ไม่มีสิทธิ์' };
+  const { order_no, status } = params;
+  if (!order_no || !status) return { success: false, error: 'ข้อมูลไม่ครบ' };
+
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('หยุดวิ่ง_Log');
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const orderNoIdx = headers.indexOf('order_no');
+  const statusIdx = headers.indexOf('status');
+  const ackIdx = headers.indexOf('acknowledged_at');
+  const compIdx = headers.indexOf('completed_at');
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][orderNoIdx] === order_no) {
+      sheet.getRange(i + 1, statusIdx + 1).setValue(status);
+      const now = new Date().toISOString();
+      if (status === 'acknowledged') sheet.getRange(i + 1, ackIdx + 1).setValue(now);
+      if (status === 'completed') sheet.getRange(i + 1, compIdx + 1).setValue(now);
+      return { success: true };
     }
-  });
-
-  return { success: true, imported: imported, failed: failed };
+  }
+  return { success: false, error: 'ไม่พบ order_no' };
 }
 
 // ==================== USER MANAGEMENT ====================

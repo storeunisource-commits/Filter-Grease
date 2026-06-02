@@ -69,8 +69,10 @@ function getViolations(params) { return apiCall({ action: 'getviolations', ...(p
 function getReportHistory() { return apiCall({ action: 'getreporthistory' }); }
 function getFleetStatus(month_year) { return apiCall({ action: 'getfleetstatus', month_year }); }
 
-// ==================== IMPORT ====================
-function bulkImport(records, type) { return apiCall({ action: 'bulkimport', records, type }); }
+// ==================== STOP WORK ORDER ====================
+function issueStopOrder(data) { return apiCall({ action: 'issuestoporder', ...data }); }
+function getStopOrders(params) { return apiCall({ action: 'getstoporders', ...(params||{}) }); }
+function updateStopOrder(order_no, status) { return apiCall({ action: 'updatestoporder', order_no, status }); }
 
 // ==================== ADMIN ====================
 function getUsers() { return apiCall({ action: 'getusers' }); }

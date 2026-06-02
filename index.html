@@ -8,50 +8,70 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <!-- SheetJS for client-side Excel parsing -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
-<nav id="main-nav" class="hidden">
-  <div class="nav-inner">
-    <span class="nav-brand">
-        <span class="brand-name">⚙️ Filter-Grease</span>
-        <span class="brand-by">By KhunMeen</span>
-      </span>
-    <button class="nav-toggle" onclick="toggleMobileNav()">☰</button>
-    <div class="nav-links" id="nav-links">
-      <a class="nav-link" href="#dashboard">🏠 หน้าหลัก</a>
-      <span class="nav-group edit-only">
-        <a class="nav-link" href="#blow">💨 เป่ากรอง</a>
-        <a class="nav-link" href="#grease">🔧 อัดจาระบี</a>
-        <a class="nav-link" href="#drain">💧 เดรนน้ำ</a>
-        <a class="nav-link" href="#followup">📞 โทรตาม</a>
-      </span>
-      <a class="nav-link" href="#history">📊 ประวัติ</a>
-      <span class="nav-group edit-only">
-        <a class="nav-link" href="#submit-report">📤 ส่งรายงาน</a>
-        <a class="nav-link" href="#submit-report-grease">🔧 ส่งรายงาน-จาระบี</a>
-        <a class="nav-link" href="#report-history">📋 ประวัติรายงาน</a>
-        <a class="nav-link" href="#violations">⚠️ มาตรการ</a>
-      </span>
-      <a class="nav-link" href="#standards">📋 มาตรฐาน</a>
-      <a class="nav-link admin-only" href="#import">📥 Import Excel</a>
-      <a class="nav-link admin-only" href="#admin" id="nav-admin">👤 Admin</a>
-    </div>
-    <div class="nav-user-area">
-      <span id="nav-user" class="nav-username"></span>
-      <button class="btn-logout" onclick="APP.logout(); window.location.hash='#login'">ออก</button>
-    </div>
+<!-- Mobile overlay -->
+<div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- Sidebar ซ้าย -->
+<aside id="sidebar" class="hidden">
+  <div class="sidebar-brand">
+    <span class="brand-name">⚙️ Filter-Grease</span>
+    <span class="brand-by">By KhunMeen</span>
   </div>
-</nav>
+  <div class="sidebar-links" id="sidebar-links">
+
+    <div class="sidebar-label">หน้าหลัก</div>
+    <a class="nav-link" href="#dashboard">🏠 Dashboard</a>
+
+    <div class="sidebar-label edit-only">บันทึกงาน</div>
+    <span class="edit-only">
+      <a class="nav-link" href="#blow">💨 เป่ากรองอากาศ</a>
+      <a class="nav-link" href="#grease">🔧 อัดจาระบี</a>
+      <a class="nav-link" href="#drain">💧 เดรนน้ำถังลม</a>
+      <a class="nav-link" href="#followup">📞 โทรตาม</a>
+    </span>
+
+    <div class="sidebar-label">ข้อมูล</div>
+    <a class="nav-link" href="#history">📊 ประวัติการบันทึก</a>
+
+    <div class="sidebar-label edit-only">รายงาน</div>
+    <span class="edit-only">
+      <a class="nav-link" href="#submit-report">📤 ส่งรายงาน (เป่า/เดรน)</a>
+      <a class="nav-link" href="#submit-report-grease">🔧 ส่งรายงาน (จาระบี)</a>
+      <a class="nav-link" href="#report-history">📋 ประวัติรายงาน</a>
+    </span>
+
+    <div class="sidebar-label edit-only">มาตรการ</div>
+    <span class="edit-only">
+      <a class="nav-link" href="#violations">⚠️ บันทึกมาตรการ</a>
+      <a class="nav-link" href="#stoporder">🚫 สั่งหยุดวิ่ง</a>
+    </span>
+
+    <div class="sidebar-label">อื่นๆ</div>
+    <a class="nav-link" href="#standards">📋 มาตรฐาน</a>
+    <a class="nav-link" href="#manual">📖 คู่มือการใช้งาน</a>
+    <a class="nav-link admin-only" href="#admin">👤 จัดการผู้ใช้</a>
+
+  </div>
+</aside>
+
+<!-- Topbar บาง (hamburger + user/logout) -->
+<header id="topbar" class="hidden">
+  <button class="nav-toggle" onclick="toggleSidebar()">☰</button>
+  <div class="topbar-right">
+    <span id="nav-user" class="nav-username"></span>
+    <button class="btn-logout" onclick="APP.logout(); window.location.hash='#login'">ออก</button>
+  </div>
+</header>
 
 <main id="app-container">
   <div class="loading"><div class="spinner"></div><p>กำลังโหลด...</p></div>
 </main>
 
-<script src="api.js"></script>
-<script src="app.js"></script>
+<script src="api.js?v=6"></script>
+<script src="app.js?v=6"></script>
 
 <script>
 const VIEW_SCRIPTS = {
@@ -67,13 +87,14 @@ const VIEW_SCRIPTS = {
   '#report-history':       'views/report-history.js',
   '#history':              'views/report.js',
   '#violations':           'views/violations.js',
+  '#stoporder':            'views/stoporder.js',
   '#standards':            'views/standards.js',
+  '#manual':               'views/manual.js',
   '#admin':                'views/admin.js',
-  '#import':               'views/import.js',
 };
 
-// Routes only viewer can access
-const VIEWER_ROUTES = new Set(['#login','#dashboard','#history','#standards','#report-history']);
+// Routes ที่ viewer เข้าได้
+const VIEWER_ROUTES = new Set(['#login','#dashboard','#history','#standards','#manual']);
 
 const loadedScripts = {};
 
@@ -87,7 +108,7 @@ async function loadScript(src) {
   if (loadedScripts[src]) return;
   await new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = src + '?v=5';
+    s.src = src + '?v=6';
     s.onload = resolve;
     s.onerror = reject;
     document.head.appendChild(s);
@@ -98,7 +119,6 @@ async function loadScript(src) {
 async function loadView(hash) {
   const src = VIEW_SCRIPTS[hash];
   if (!src) return null;
-  // Preload dependencies first
   const deps = PRELOAD_DEPS[hash] || [];
   for (const dep of deps) { await loadScript(dep); }
   await loadScript(src);
@@ -108,13 +128,19 @@ async function loadView(hash) {
 
 function updateNav() {
   const user = APP.getUserInfo();
-  const nav = document.getElementById('main-nav');
-  if (!user) { nav.classList.add('hidden'); return; }
-  nav.classList.remove('hidden');
+  const sidebar = document.getElementById('sidebar');
+  const topbar  = document.getElementById('topbar');
+  if (!user) {
+    sidebar.classList.add('hidden');
+    topbar.classList.add('hidden');
+    return;
+  }
+  sidebar.classList.remove('hidden');
+  topbar.classList.remove('hidden');
   document.getElementById('nav-user').textContent = user.display_name;
 
   const isViewer = user.role === 'viewer';
-  const isAdmin = user.role === 'admin';
+  const isAdmin  = user.role === 'admin';
 
   document.querySelectorAll('.edit-only').forEach(el => {
     el.style.display = isViewer ? 'none' : '';
@@ -124,8 +150,14 @@ function updateNav() {
   });
 }
 
-function toggleMobileNav() {
-  document.getElementById('nav-links').classList.toggle('open');
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
 }
 
 async function navigate() {
@@ -146,11 +178,13 @@ async function navigate() {
 
   updateNav();
 
+  // Active link
   document.querySelectorAll('.nav-link').forEach(a => {
     a.classList.toggle('active', a.getAttribute('href') === hash);
   });
-  // Close mobile nav
-  document.getElementById('nav-links') && document.getElementById('nav-links').classList.remove('open');
+
+  // ปิด sidebar บน mobile หลัง navigate
+  closeSidebar();
 
   APP.showLoading(container);
 

@@ -13,7 +13,8 @@
   --text: #2c3e50;
   --text-light: #7f8c8d;
   --border: #dce3ea;
-  --nav-h: 56px;
+  --sidebar-w: 220px;
+  --topbar-h: 48px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -23,39 +24,50 @@ body {
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
-  padding-top: var(--nav-h);
 }
 
-/* ==================== NAV ==================== */
+/* ==================== SIDEBAR ==================== */
 
-#main-nav {
+/* Mobile overlay backdrop */
+.sidebar-overlay {
+  display: none;
   position: fixed;
-  top: 0; left: 0; right: 0;
-  height: var(--nav-h);
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 199;
+}
+.sidebar-overlay.open { display: block; }
+
+/* Sidebar */
+#sidebar {
+  position: fixed;
+  top: 0; left: 0;
+  width: var(--sidebar-w);
+  height: 100vh;
   background: var(--primary);
-  padding: 0 12px;
-  z-index: 100;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-}
-
-#main-nav.hidden { display: none; }
-
-/* Nav inner: flex row ที่ไม่ scroll — user/logout ชิดขวาเสมอ */
-.nav-inner {
-  display: flex;
-  align-items: center;
-  height: 100%;
-  gap: 4px;
-}
-
-/* Brand: 2 บรรทัด (Filter-Grease + By KhunMeen) */
-.nav-brand {
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 200;
   display: flex;
   flex-direction: column;
-  line-height: 1.2;
-  margin-right: 8px;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.3);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
+  transition: transform 0.3s ease;
+}
+#sidebar::-webkit-scrollbar { width: 4px; }
+#sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+#sidebar.hidden { display: none; }
+
+/* Brand area ใน sidebar */
+.sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  padding: 16px 14px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
   flex-shrink: 0;
-  text-decoration: none;
 }
 .brand-name {
   font-weight: 700;
@@ -66,32 +78,68 @@ body {
 .brand-by {
   font-size: 9px;
   color: rgba(255,255,255,0.45);
+  margin-top: 2px;
 }
 
-/* Links area: scrollable แต่ซ่อน scrollbar */
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 2px;
+/* Links area ใน sidebar */
+.sidebar-links {
   flex: 1;
-  overflow-x: auto;
-  min-width: 0;
-  scrollbar-width: none; /* Firefox */
+  padding: 8px 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-.nav-links::-webkit-scrollbar { display: none; } /* Chrome/Safari */
 
-/* User area: ชิดขวา ไม่ shrink */
-.nav-user-area {
+/* Section label */
+.sidebar-label {
+  font-size: 10px;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 12px 6px 4px;
+  font-weight: 600;
+}
+
+.nav-link {
+  color: rgba(255,255,255,0.8);
+  text-decoration: none;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: background 0.15s;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-link:hover, .nav-link.active {
+  background: var(--primary-light);
+  color: #fff;
+}
+
+/* Topbar บาง */
+#topbar {
+  position: fixed;
+  top: 0; right: 0;
+  height: var(--topbar-h);
+  background: var(--primary);
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  margin-left: 4px;
+  justify-content: space-between;
+  padding: 0 12px;
+  z-index: 100;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+#topbar.hidden { display: none; }
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-/* Hamburger toggle: ซ่อนบน desktop */
+/* Hamburger toggle */
 .nav-toggle {
-  display: none;
   background: transparent;
   border: 1px solid rgba(255,255,255,0.4);
   color: white;
@@ -99,70 +147,41 @@ body {
   padding: 4px 10px;
   border-radius: 6px;
   cursor: pointer;
-  flex-shrink: 0;
-}
-
-.nav-link {
-  color: rgba(255,255,255,0.8);
-  text-decoration: none;
-  padding: 6px 10px;
-  border-radius: 6px;
-  white-space: nowrap;
-  font-size: 13px;
-  transition: background 0.2s;
-  flex-shrink: 0;
-}
-
-.nav-link:hover, .nav-link.active {
-  background: var(--primary-light);
-  color: #fff;
+  line-height: 1;
 }
 
 #nav-user {
-  color: rgba(255,255,255,0.7);
+  color: rgba(255,255,255,0.75);
   font-size: 13px;
   white-space: nowrap;
 }
-
 .btn-logout {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.4);
-  color: rgba(255,255,255,0.8);
+  color: rgba(255,255,255,0.85);
   padding: 4px 10px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
 }
-
 .btn-logout:hover { background: rgba(255,255,255,0.1); }
 
-/* Mobile (<600px): hamburger แสดง, links เป็น dropdown */
-@media (max-width: 599px) {
-  .nav-toggle { display: block; }
-  .nav-links {
-    display: none;
-    position: absolute;
-    top: var(--nav-h);
-    left: 0; right: 0;
-    background: var(--primary);
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 8px;
-    gap: 2px;
-    z-index: 99;
-    overflow-y: auto;
-    max-height: calc(100vh - var(--nav-h));
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  }
-  .nav-links.open { display: flex; }
-  .nav-links .nav-link { width: 100%; }
+/* Desktop (≥768px): sidebar ถาวร, topbar เริ่มหลัง sidebar */
+@media (min-width: 768px) {
+  body { padding-left: var(--sidebar-w); padding-top: var(--topbar-h); }
+  #topbar { left: var(--sidebar-w); }
+  .nav-toggle { display: none !important; }
+  #sidebar { transform: none !important; }
+  #sidebar.hidden { display: flex !important; }
 }
 
-/* Desktop (≥600px): links แสดงเสมอ, ซ่อน toggle */
-@media (min-width: 600px) {
-  .nav-toggle { display: none !important; }
-  .nav-links { display: flex !important; }
+/* Mobile (<768px): sidebar slide-in overlay */
+@media (max-width: 767px) {
+  body { padding-left: 0; padding-top: var(--topbar-h); }
+  #topbar { left: 0; }
+  #sidebar { transform: translateX(-100%); }
+  #sidebar.open { transform: translateX(0); }
 }
 
 /* ==================== LAYOUT ==================== */
@@ -579,12 +598,45 @@ tr:last-child td { border-bottom: none; }
 .status-option.selected-not_done { border-color: var(--danger);  background: #fdedec; }
 .status-hint { font-size: 12px; color: var(--text-light); margin-top: 6px; }
 
+/* ==================== STOP ORDER DOCUMENT ==================== */
+
+.stop-order-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 300;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.stop-order-doc-wrap {
+  background: white;
+  max-width: 640px; width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 8px;
+  padding: 32px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.stop-order-doc { font-family: 'Sarabun', serif; font-size: 14px; line-height: 1.8; color: #000; }
+.doc-header-row { display: flex; justify-content: space-between; margin-bottom: 24px; }
+.doc-company { font-size: 16px; font-weight: 700; }
+.doc-title { text-align: center; font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.doc-no { text-align: center; color: #555; margin-bottom: 24px; }
+.doc-body { white-space: pre-line; margin-bottom: 32px; }
+.doc-signature { margin-top: 48px; text-align: right; line-height: 2.2; }
+.doc-actions { display: flex; gap: 8px; margin-top: 16px; }
+
 /* ==================== PRINT ==================== */
 
 @media print {
-  #main-nav { display: none !important; }
-  body { padding-top: 0; background: white; }
+  #sidebar, #topbar, .sidebar-overlay { display: none !important; }
+  body { padding: 0 !important; background: white; }
   #app-container { max-width: 100%; padding: 0; }
-  .btn { display: none; }
+  .btn, .doc-actions { display: none !important; }
   .card { box-shadow: none; border: 1px solid #ccc; }
+  .stop-order-modal-backdrop {
+    position: static; background: none; padding: 0;
+  }
+  .stop-order-doc-wrap {
+    box-shadow: none; border-radius: 0; max-height: none; padding: 0;
+  }
 }
