@@ -27,6 +27,7 @@ window.VIEW_ADMIN = async function render(container) {
         <label class="form-label">สิทธิ์</label>
         <select class="form-control" id="add-role">
           <option value="operator">Operator (กรอกข้อมูล)</option>
+          <option value="viewer">Viewer (ดูได้อย่างเดียว)</option>
           <option value="admin">Admin (จัดการระบบ)</option>
         </select>
       </div>

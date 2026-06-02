@@ -1,141 +1,246 @@
-// views/greasing.js — Bi-monthly greasing entry
+// views/greasing.js — Greasing entry (ไม่ lock, กรอกได้ทุกวัน)
 window.VIEW_GREASE = async function render(container) {
   const todayDate = new Date();
   const today = APP.todayISO();
-  const cycle = APP.getGreaseCycle(todayDate);
   const lastDay = APP.getLastDayOfMonth(todayDate.getFullYear(), todayDate.getMonth() + 1);
   const monthLabel = APP.formatThaiMonth(todayDate.getMonth() + 1, todayDate.getFullYear());
-  const cycleLabel = cycle === '10-15' ? 'รอบ 1: วันที่ 10-15' : cycle === '25-end' ? `รอบ 2: วันที่ 25-${lastDay}` : null;
-  const cycleKey = cycle === '10-15' ? '10-15' : cycle === '25-end' ? '25-end' : null;
   const monthYear = today.substring(0, 7);
+  const autoCycle = APP.getGreaseCycle(todayDate);
 
   container.innerHTML = `
     <div class="page-title">🔧 บันทึกอัดจาระบี</div>
     <div class="date-display">📅 ${APP.formatThaiDate(todayDate)}</div>
-    <div id="grease-content"></div>
+    <div id="grease-content"><div class="loading"><div class="spinner"></div><p>กำลังโหลด...</p></div></div>
   `;
 
-  const content = document.getElementById('grease-content');
-
-  if (!cycle) {
-    const nextCycle = APP.getNextGreaseCycle();
-    content.innerHTML = `
-      <div class="lock-screen">
-        <div class="lock-icon">🔒</div>
-        <div class="lock-title">ยังไม่ถึงรอบอัดจาระบี</div>
-        <p style="margin-bottom:12px;color:#7f8c8d">รอบอัดจาระบี: วันที่ 10-15 และ 25-ท้ายเดือน</p>
-        <div class="lock-next">📅 รอบถัดไป: ${nextCycle}</div>
-      </div>
-    `;
-    return;
-  }
-
   try {
-    const [trucksRes, historyRes] = await Promise.all([
-      APP.getTrucks(),
-      APP.getHistory('grease', monthYear)
-    ]);
+    const [trucksRes, violationsRes] = await Promise.all([APP.getTrucks(), APP.getViolations()]);
     const trucks = trucksRes.trucks || [];
-    const cycleRecords = (historyRes.records || []).filter(r => r.cycle === cycleKey);
-    const alreadyDone = cycleRecords.filter(r => r.done === 'Y').map(r => r.truck_no);
-    const submitted = cycleRecords.length > 0;
-
-    if (submitted && alreadyDone.length > 0) {
-      content.innerHTML = `
-        <div class="cycle-badge">🔧 ${cycleLabel} — ${monthLabel}</div>
-        <div class="alert alert-success">✅ บันทึกรอบนี้แล้ว (${alreadyDone.length}/${trucks.length} คัน)</div>
-        <div class="card">
-          <div class="card-title">รายการที่อัดแล้ว</div>
-          ${trucks.map(t => {
-            const done = alreadyDone.includes(t.truck_no);
-            return `<div class="truck-row ${done ? 'done' : ''}">
-              <span style="font-size:18px">${done ? '✅' : '⬜'}</span>
-              <div class="truck-info">
-                <div class="truck-no">${t.truck_no}</div>
-                <div class="truck-driver">${t.driver} ${APP.createStatusBadge(t.status)}</div>
-              </div>
-            </div>`;
-          }).join('')}
-        </div>
-        <button class="btn btn-outline btn-full" onclick="window.VIEW_GREASE_EDIT()">✏️ บันทึกเพิ่มเติม</button>
-      `;
-    } else {
-      renderGreaseForm(content, trucks, today, cycleKey, cycleLabel, monthYear, monthLabel);
-    }
-
-    window.VIEW_GREASE_EDIT = () => renderGreaseForm(content, trucks, today, cycleKey, cycleLabel, monthYear, monthLabel);
+    const violations = violationsRes.records || [];
+    renderGreaseForm(document.getElementById('grease-content'), trucks, today, monthYear, monthLabel, lastDay, autoCycle, violations);
   } catch (e) {
-    APP.showError(content, 'ไม่สามารถโหลดข้อมูลได้: ' + e.message);
+    APP.showError(document.getElementById('grease-content'), 'ไม่สามารถโหลดข้อมูลได้: ' + e.message);
   }
 };
 
-function renderGreaseForm(container, trucks, today, cycleKey, cycleLabel, monthYear, monthLabel) {
+function renderGreaseForm(container, trucks, today, monthYear, monthLabel, lastDay, autoCycle, violations) {
   const activeTrucks = trucks.filter(t => t.active !== false && t.active !== 'FALSE');
 
+  // Violation count per truck
+  const vioCount = {};
+  violations.forEach(v => { vioCount[v.truck_no] = (vioCount[v.truck_no] || 0) + 1; });
+
   container.innerHTML = `
-    <div class="cycle-badge">🔧 ${cycleLabel} — ${monthLabel}</div>
     <div class="card">
-      <div class="card-title">รายการรถทั้งหมด (${activeTrucks.length} คัน)</div>
-      <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-outline" onclick="selectAllGrease(true)">เลือกทั้งหมด</button>
-        <button class="btn btn-sm btn-outline" onclick="selectAllGrease(false)">ยกเลิกทั้งหมด</button>
-      </div>
-      <div class="truck-list" id="grease-list">
-        ${activeTrucks.map((t, i) => {
-          const auto = t.status === 'จอดซ่อม' || t.status === 'จอดเคลม';
-          return `
-            <div class="truck-row ${auto ? 'done' : ''}" id="grease-row-${i}">
-              <input type="checkbox" class="truck-check grease-check" data-idx="${i}" ${auto ? 'checked' : ''}
-                onchange="document.getElementById('grease-row-${i}').className='truck-row'+(this.checked?' done':'')">
-              <div class="truck-info">
-                <div class="truck-no">${t.truck_no}</div>
-                <div class="truck-driver">${t.driver} ${APP.createStatusBadge(t.status)}</div>
-              </div>
-              <input type="text" class="truck-note" placeholder="หมายเหตุ" value="${auto ? t.status : ''}">
-            </div>`;
-        }).join('')}
+      <div class="card-title">⚙️ ตั้งค่ารอบการบันทึก</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="margin:0;flex:1;min-width:150px">
+          <label class="form-label">รอบ</label>
+          <select class="form-control" id="grease-cycle">
+            <option value="10-15" ${autoCycle === '10-15' ? 'selected' : ''}>รอบ 1: วันที่ 10-15</option>
+            <option value="25-end" ${autoCycle === '25-end' ? 'selected' : ''}>รอบ 2: วันที่ 25-${lastDay}</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;flex:1;min-width:150px">
+          <label class="form-label">เดือน/ปี</label>
+          <input class="form-control" type="text" id="grease-monthyear" value="${monthYear}" readonly>
+          <div style="font-size:12px;color:#7f8c8d;margin-top:2px">${monthLabel}</div>
+        </div>
       </div>
     </div>
-    <div id="grease-msg"></div>
-    <button class="btn btn-primary btn-full" id="grease-submit-btn" onclick="submitGrease()">💾 บันทึกอัดจาระบีรอบนี้</button>
+
+    <div class="card">
+      <div class="card-title">เลือกรถที่จะบันทึก</div>
+      <div class="form-group">
+        <label class="form-label">เบอร์รถ</label>
+        <select class="form-control" id="grease-truck-select" onchange="onGreaseTruckSelect()">
+          ${APP.buildTruckOptions(activeTrucks)}
+        </select>
+      </div>
+      <div id="grease-truck-info" style="display:none">
+        <div class="form-group">
+          <label class="form-label">คนขับ</label>
+          <input class="form-control" type="text" id="grease-driver" placeholder="ชื่อคนขับ">
+        </div>
+        <div id="grease-violation-alert"></div>
+        <div class="form-group">
+          <label class="form-label">สถานะงาน</label>
+          <div class="status-options" id="grease-status-opts">
+            <label class="status-option" onclick="selectGreaseStatus('called')">
+              <input type="radio" name="grease-action" value="called"> 📞 โทรแจ้งแล้ว
+              <span class="status-hint">บันทึกเวลาโทรอัตโนมัติ + หมายเหตุ</span>
+            </label>
+            <label class="status-option" onclick="selectGreaseStatus('done')">
+              <input type="radio" name="grease-action" value="done"> ✅ อัดแล้ว
+              <span class="status-hint">บันทึกวันที่ + แนบรูปได้</span>
+            </label>
+            <label class="status-option" onclick="selectGreaseStatus('not_done')">
+              <input type="radio" name="grease-action" value="not_done"> ❌ ยังไม่ได้อัด
+              <span class="status-hint">ระบุหมายเหตุบังคับ</span>
+            </label>
+          </div>
+        </div>
+        <div id="grease-extra-fields"></div>
+        <div id="grease-msg"></div>
+        <button class="btn btn-primary btn-full" id="grease-save-btn" onclick="saveGreasingRecord()" style="display:none">💾 บันทึก</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">รายการที่บันทึกวันนี้ <span id="grease-today-count" class="badge badge-green" style="margin-left:8px"></span></div>
+      <div id="grease-today-list"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
   `;
 
   window._greaseTrucks = activeTrucks;
-  window._greaseToday = today;
-  window._greaseCycleKey = cycleKey;
-  window._greaseMonthYear = monthYear;
+  window._greasingVioCount = vioCount;
 
-  window.selectAllGrease = (val) => {
-    document.querySelectorAll('.grease-check').forEach((cb, i) => {
-      cb.checked = val;
-      const row = document.getElementById('grease-row-' + i);
-      if (row) row.className = 'truck-row' + (val ? ' done' : '');
-    });
+  // Load today records
+  loadGreaseTodayList(monthYear);
+
+  window.onGreaseTruckSelect = () => {
+    const sel = document.getElementById('grease-truck-select');
+    const truck = activeTrucks.find(t => t.truck_no === sel.value);
+    const infoDiv = document.getElementById('grease-truck-info');
+    if (!truck) { infoDiv.style.display = 'none'; return; }
+    infoDiv.style.display = '';
+    document.getElementById('grease-driver').value = truck.driver || '';
+
+    // Violation alert
+    const vc = vioCount[truck.truck_no] || 0;
+    const alertEl = document.getElementById('grease-violation-alert');
+    alertEl.innerHTML = vc > 0 ? `<div class="alert alert-warning">⚠️ มีประวัติการละเลย ${vc} ครั้ง</div>` : '';
+
+    // Reset status
+    document.querySelectorAll('input[name="grease-action"]').forEach(r => r.checked = false);
+    document.getElementById('grease-extra-fields').innerHTML = '';
+    document.getElementById('grease-save-btn').style.display = 'none';
   };
 
-  window.submitGrease = async () => {
-    const btn = document.getElementById('grease-submit-btn');
+  window.selectGreaseStatus = (status) => {
+    const extraEl = document.getElementById('grease-extra-fields');
+    const btn = document.getElementById('grease-save-btn');
+    btn.style.display = '';
+    const nowStr = new Date().toLocaleString('th-TH');
+
+    if (status === 'called') {
+      extraEl.innerHTML = `
+        <div class="alert alert-info" style="margin-bottom:8px">📞 เวลาโทร: ${nowStr}</div>
+        <div class="form-group">
+          <label class="form-label">หมายเหตุ</label>
+          <input class="form-control" type="text" id="grease-note" placeholder="ผลการโทร / หมายเหตุ">
+        </div>`;
+    } else if (status === 'done') {
+      extraEl.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">วันที่อัด</label>
+          <input class="form-control" type="date" id="grease-done-date" value="${APP.todayISO()}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">แนบรูปภาพ (ไม่บังคับ)</label>
+          <input class="form-control" type="file" id="grease-image" accept="image/*">
+        </div>
+        <div class="form-group">
+          <label class="form-label">หมายเหตุ</label>
+          <input class="form-control" type="text" id="grease-note" placeholder="หมายเหตุเพิ่มเติม">
+        </div>`;
+    } else if (status === 'not_done') {
+      extraEl.innerHTML = `
+        <div class="alert alert-warning" style="margin-bottom:8px">⏰ เวลาที่บันทึก: ${nowStr}</div>
+        <div class="form-group">
+          <label class="form-label">หมายเหตุ <span style="color:red">*</span></label>
+          <input class="form-control" type="text" id="grease-note" placeholder="เหตุผลที่ยังไม่ได้อัด (บังคับ)">
+        </div>`;
+    }
+  };
+
+  window.saveGreasingRecord = async () => {
+    const btn = document.getElementById('grease-save-btn');
     const msg = document.getElementById('grease-msg');
+    const sel = document.getElementById('grease-truck-select');
+    const truck = activeTrucks.find(t => t.truck_no === sel.value);
+    if (!truck) return;
+
+    const actionEl = document.querySelector('input[name="grease-action"]:checked');
+    if (!actionEl) { msg.innerHTML = '<div class="alert alert-danger">กรุณาเลือกสถานะงาน</div>'; return; }
+    const action = actionEl.value;
+    const note = (document.getElementById('grease-note') || {}).value || '';
+    if (action === 'not_done' && !note.trim()) {
+      msg.innerHTML = '<div class="alert alert-danger">กรุณาระบุหมายเหตุ</div>'; return;
+    }
+
     APP.setButtonLoading(btn, true);
     msg.innerHTML = '';
 
-    const checkboxes = document.querySelectorAll('.grease-check');
-    const notes = document.querySelectorAll('#grease-list .truck-note');
-    const records = window._greaseTrucks.map((t, i) => ({
-      truck_no: t.truck_no,
-      driver: t.driver,
-      status: t.status,
-      done: checkboxes[i] ? checkboxes[i].checked : false,
-      note: notes[i] ? notes[i].value : ''
-    }));
-
     try {
-      await APP.saveGreasing(records, window._greaseToday, window._greaseCycleKey, window._greaseMonthYear);
+      let image_url = '';
+      if (action === 'done') {
+        const fileEl = document.getElementById('grease-image');
+        if (fileEl && fileEl.files[0]) {
+          image_url = await uploadImageFile(fileEl.files[0], truck.truck_no, 'อัดจาระบี', APP.todayISO());
+        }
+      }
+
+      const cycle = document.getElementById('grease-cycle').value;
+      const monthYear = document.getElementById('grease-monthyear').value;
+      const driver = document.getElementById('grease-driver').value;
+      const record = {
+        truck_no: truck.truck_no, driver,
+        status: truck.status, action_status: action,
+        action_datetime: new Date().toISOString(),
+        note, image_url
+      };
+      await APP.saveGreasing(record, APP.todayISO(), cycle, monthYear);
       msg.innerHTML = '<div class="alert alert-success">✅ บันทึกเรียบร้อยแล้ว!</div>';
-      setTimeout(() => { window.location.hash = '#dashboard'; }, 1500);
+      APP.setButtonLoading(btn, false);
+      document.getElementById('grease-truck-select').value = '';
+      document.getElementById('grease-truck-info').style.display = 'none';
+      loadGreaseTodayList(monthYear);
     } catch (e) {
-      msg.innerHTML = `<div class="alert alert-danger">เกิดข้อผิดพลาด: ${e.message}</div>`;
+      msg.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
       APP.setButtonLoading(btn, false);
     }
   };
 }
+
+async function loadGreaseTodayList(monthYear) {
+  const el = document.getElementById('grease-today-list');
+  const countEl = document.getElementById('grease-today-count');
+  if (!el) return;
+  try {
+    const [year, month] = monthYear.split('-');
+    const res = await APP.getHistory('grease', year, month);
+    const today = APP.todayISO();
+    const todayRecs = (res.records || []).filter(r => r.date === today);
+    if (countEl) countEl.textContent = todayRecs.length + ' รายการ';
+    if (!todayRecs.length) { el.innerHTML = '<div style="color:#7f8c8d;font-size:14px;padding:8px">ยังไม่มีการบันทึกวันนี้</div>'; return; }
+    el.innerHTML = todayRecs.map(r => `
+      <div class="truck-row">
+        <div class="truck-info">
+          <div class="truck-no">${r.truck_no}</div>
+          <div class="truck-driver">${r.driver}</div>
+        </div>
+        <span class="badge ${r.action_status==='done'?'badge-green':r.action_status==='called'?'badge-orange':'badge-red'}">
+          ${r.action_status==='done'?'✅ อัดแล้ว':r.action_status==='called'?'📞 โทรแล้ว':'❌ ยังไม่อัด'}
+        </span>
+        ${r.image_url ? `<a href="${r.image_url}" target="_blank" class="btn btn-sm btn-outline">🖼️</a>` : ''}
+      </div>`).join('');
+  } catch (e) { el.innerHTML = '<div class="alert alert-danger">โหลดไม่สำเร็จ</div>'; }
+}
+
+async function uploadImageFile(file, truck_no, task_type, date) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target.result.split(',')[1];
+      const mimeType = file.type;
+      try {
+        const res = await APP.uploadImage(base64, mimeType, truck_no, task_type, date);
+        if (res.success) resolve(res.url);
+        else reject(new Error(res.error || 'อัปโหลดรูปไม่สำเร็จ'));
+      } catch (err) { reject(err); }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+window._uploadImageFile = uploadImageFile;

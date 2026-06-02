@@ -12,20 +12,31 @@
 <body>
 
 <nav id="main-nav" class="hidden">
-  <span class="nav-brand">⚙️ Filter-Grease</span>
-  <a class="nav-link" href="#dashboard">หน้าหลัก</a>
-  <a class="nav-link" href="#blow">เป่ากรอง</a>
-  <a class="nav-link" href="#grease">อัดจาระบี</a>
-  <a class="nav-link" href="#drain">เดรนน้ำ</a>
-  <a class="nav-link" href="#followup">โทรตาม</a>
-  <a class="nav-link" href="#submit-report">ส่งรายงาน</a>
-  <a class="nav-link" href="#history">ประวัติ</a>
-  <a class="nav-link" href="#violations">มาตรการ</a>
-  <a class="nav-link" href="#standards">มาตรฐาน</a>
-  <a class="nav-link" href="#admin" id="nav-admin" style="display:none">Admin</a>
-  <span class="nav-spacer"></span>
-  <span id="nav-user"></span>
-  <button class="btn-logout" onclick="APP.logout(); window.location.hash='#login'">ออกจากระบบ</button>
+  <div class="nav-inner">
+    <span class="nav-brand">⚙️ Filter-Grease</span>
+    <button class="nav-toggle" onclick="toggleMobileNav()">☰</button>
+    <div class="nav-links" id="nav-links">
+      <a class="nav-link" href="#dashboard">🏠 หน้าหลัก</a>
+      <span class="nav-group edit-only">
+        <a class="nav-link" href="#blow">💨 เป่ากรอง</a>
+        <a class="nav-link" href="#grease">🔧 อัดจาระบี</a>
+        <a class="nav-link" href="#drain">💧 เดรนน้ำ</a>
+        <a class="nav-link" href="#followup">📞 โทรตาม</a>
+      </span>
+      <a class="nav-link" href="#history">📊 ประวัติ</a>
+      <span class="nav-group edit-only">
+        <a class="nav-link" href="#submit-report">📤 ส่งรายงาน</a>
+        <a class="nav-link" href="#submit-report-grease">🔧 ส่งรายงาน-จาระบี</a>
+        <a class="nav-link" href="#violations">⚠️ มาตรการ</a>
+      </span>
+      <a class="nav-link" href="#standards">📋 มาตรฐาน</a>
+      <a class="nav-link admin-only" href="#admin" id="nav-admin">👤 Admin</a>
+    </div>
+    <div class="nav-user-area">
+      <span id="nav-user" class="nav-username"></span>
+      <button class="btn-logout" onclick="APP.logout(); window.location.hash='#login'">ออก</button>
+    </div>
+  </div>
 </nav>
 
 <main id="app-container">
@@ -36,70 +47,102 @@
 <script src="app.js"></script>
 
 <script>
-// Inline view loader (fallback when ES modules not supported via file://)
-// Views are loaded as scripts dynamically
 const VIEW_SCRIPTS = {
-  '#login': 'views/login.js',
-  '#dashboard': 'views/dashboard.js',
-  '#blow': 'views/blowing.js',
-  '#grease': 'views/greasing.js',
-  '#drain': 'views/drain.js',
-  '#followup': 'views/followup.js',
-  '#submit-report': 'views/submit-report.js',
-  '#report-history': 'views/report-history.js',
-  '#history': 'views/report.js',
-  '#violations': 'views/violations.js',
-  '#standards': 'views/standards.js',
-  '#admin': 'views/admin.js',
+  '#login':                'views/login.js',
+  '#dashboard':            'views/dashboard.js',
+  '#blow':                 'views/blowing.js',
+  '#grease':               'views/greasing.js',
+  '#drain':                'views/drain.js',
+  '#entry-form':           'views/entry-form.js',
+  '#followup':             'views/followup.js',
+  '#submit-report':        'views/submit-report.js',
+  '#submit-report-grease': 'views/submit-report-grease.js',
+  '#report-history':       'views/report-history.js',
+  '#history':              'views/report.js',
+  '#violations':           'views/violations.js',
+  '#standards':            'views/standards.js',
+  '#admin':                'views/admin.js',
 };
 
+// Routes only viewer can access
+const VIEWER_ROUTES = new Set(['#login','#dashboard','#history','#standards']);
+
 const loadedScripts = {};
+
+const PRELOAD_DEPS = {
+  '#blow':  ['views/entry-form.js', 'views/greasing.js'],
+  '#drain': ['views/entry-form.js'],
+  '#grease': ['views/greasing.js'],
+};
+
+async function loadScript(src) {
+  if (loadedScripts[src]) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src + '?v=3';
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  loadedScripts[src] = true;
+}
 
 async function loadView(hash) {
   const src = VIEW_SCRIPTS[hash];
   if (!src) return null;
-  if (!loadedScripts[src]) {
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = reject;
-      document.head.appendChild(s);
-    });
-    loadedScripts[src] = true;
-  }
-  return window['VIEW_' + hash.replace('#', '').replace('-', '_').toUpperCase()];
+  // Preload dependencies first
+  const deps = PRELOAD_DEPS[hash] || [];
+  for (const dep of deps) { await loadScript(dep); }
+  await loadScript(src);
+  const key = 'VIEW_' + hash.replace('#','').replace(/-/g,'_').toUpperCase();
+  return window[key];
 }
 
-// Override navigate from app.js with script-tag version
+function updateNav() {
+  const user = APP.getUserInfo();
+  const nav = document.getElementById('main-nav');
+  if (!user) { nav.classList.add('hidden'); return; }
+  nav.classList.remove('hidden');
+  document.getElementById('nav-user').textContent = user.display_name;
+
+  const isViewer = user.role === 'viewer';
+  const isAdmin = user.role === 'admin';
+
+  document.querySelectorAll('.edit-only').forEach(el => {
+    el.style.display = isViewer ? 'none' : '';
+  });
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.style.display = isAdmin ? '' : 'none';
+  });
+}
+
+function toggleMobileNav() {
+  document.getElementById('nav-links').classList.toggle('open');
+}
+
 async function navigate() {
   const hash = window.location.hash || '#dashboard';
   const container = document.getElementById('app-container');
 
   if (hash !== '#login' && !APP.isLoggedIn()) {
-    window.location.hash = '#login';
-    return;
+    window.location.hash = '#login'; return;
   }
   if (hash === '#login' && APP.isLoggedIn()) {
-    window.location.hash = '#dashboard';
-    return;
+    window.location.hash = '#dashboard'; return;
   }
 
-  // Update nav
-  const nav = document.getElementById('main-nav');
-  const user = APP.getUserInfo();
-  if (user) {
-    nav.classList.remove('hidden');
-    document.getElementById('nav-user').textContent = user.display_name;
-    const adminLink = document.getElementById('nav-admin');
-    if (adminLink) adminLink.style.display = user.role === 'admin' ? '' : 'none';
-  } else {
-    nav.classList.add('hidden');
+  // Viewer role restriction
+  if (APP.isViewerOnly && APP.isViewerOnly() && !VIEWER_ROUTES.has(hash)) {
+    window.location.hash = '#dashboard'; return;
   }
+
+  updateNav();
 
   document.querySelectorAll('.nav-link').forEach(a => {
     a.classList.toggle('active', a.getAttribute('href') === hash);
   });
+  // Close mobile nav
+  document.getElementById('nav-links') && document.getElementById('nav-links').classList.remove('open');
 
   APP.showLoading(container);
 
@@ -116,6 +159,5 @@ async function navigate() {
 window.addEventListener('hashchange', navigate);
 window.addEventListener('load', navigate);
 </script>
-
 </body>
 </html>
