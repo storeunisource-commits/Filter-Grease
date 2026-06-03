@@ -80,3 +80,17 @@ function getUsers() { return apiCall({ action: 'getusers' }); }
 function addUser(data) { return apiCall({ action: 'adduser', ...data }); }
 function deleteUser(username) { return apiCall({ action: 'deleteuser', username }); }
 function resetPassword(username, new_password) { return apiCall({ action: 'resetpassword', username, new_password }); }
+function updateUser(data) { return apiCall({ action: 'updateuser', ...data }); }
+
+// ==================== WARNING LETTERS ====================
+function getWarningLetters(params) { return apiCall({ action: 'getwarningletters', ...(params||{}) }); }
+function approveWarningLetter(data) { return apiCall({ action: 'approvewarningletter', ...data }); }
+
+// ==================== COMPLETION ====================
+function recordCompletion(data) { return apiCall({ action: 'recordcompletion', ...data }); }
+
+// ==================== NOTIFICATIONS ====================
+function getNotifications() { return apiCall({ action: 'getnotifications' }); }
+
+// ==================== PDF ====================
+function savePDFToDrive(data) { return apiCall({ action: 'savepdf', ...data }); }

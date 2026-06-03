@@ -629,6 +629,61 @@ tr:last-child td { border-bottom: none; }
 
 #sig-canvas { display: block; }
 
+/* ==================== NOTIFICATION BELL ==================== */
+
+.notif-bell {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  position: relative;
+}
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--danger);
+  color: white;
+  border-radius: 10px;
+  font-size: 10px;
+  padding: 1px 5px;
+  font-weight: 700;
+}
+.notif-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+}
+.notif-item:hover { background: #f8fafc; }
+.notif-title { font-weight: 500; }
+
+/* ==================== LOGIN REDESIGN ==================== */
+
+.login-page-bg {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a3a5c 0%, #2a5a8c 60%, #1a3a5c 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.login-card-new {
+  background: white;
+  border-radius: 16px;
+  padding: 40px 32px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.login-logo { text-align: center; margin-bottom: 20px; }
+.login-logo img { height: 72px; width: auto; }
+.login-company { text-align: center; font-size: 15px; font-weight: 700; color: var(--primary); margin-bottom: 4px; }
+.login-system { text-align: center; font-size: 13px; color: var(--text-light); margin-bottom: 4px; }
+.login-by-new { text-align: center; font-size: 11px; color: var(--text-light); margin-bottom: 24px; }
+
 /* ==================== PRINT ==================== */
 
 @media print {

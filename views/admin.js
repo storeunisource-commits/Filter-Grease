@@ -105,27 +105,53 @@ window.VIEW_ADMIN = async function render(container) {
 
     window.clearSigCanvas = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); };
 
-    window.saveSigFromCanvas = () => {
+    window.saveSigFromCanvas = async () => {
       const dataUrl = canvas.toDataURL('image/png');
-      localStorage.setItem(sigKey, dataUrl);
-      document.getElementById('sig-msg').innerHTML = '<div class="alert alert-success">✅ บันทึกลายเซ็นต์เรียบร้อย</div>';
-      previewEl.innerHTML = `<div style="font-size:13px;color:#27ae60;margin-bottom:4px">✅ ลายเซ็นต์ที่บันทึก:</div>
-        <img src="${dataUrl}" style="max-height:80px;border:1px solid #ddd;border-radius:4px;background:white">`;
+      // Compress before storing
+      const compressed = await compressSigImage(dataUrl, 400);
+      try {
+        localStorage.setItem(sigKey, compressed);
+        document.getElementById('sig-msg').innerHTML = '<div class="alert alert-success">✅ บันทึกลายเซ็นต์เรียบร้อย</div>';
+        previewEl.innerHTML = `<div style="font-size:13px;color:#27ae60;margin-bottom:4px">✅ ลายเซ็นต์ที่บันทึก:</div>
+          <img src="${compressed}" style="max-height:80px;border:1px solid #ddd;border-radius:4px;background:white">`;
+      } catch(storageErr) {
+        document.getElementById('sig-msg').innerHTML = '<div class="alert alert-danger">❌ รูปใหญ่เกินไป กรุณาวาดใหม่หรือใช้รูปขนาดเล็กลง</div>';
+      }
     };
 
     window.uploadSigFile = (event) => {
       const file = event.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target.result;
-        localStorage.setItem(sigKey, dataUrl);
-        document.getElementById('sig-msg').innerHTML = '<div class="alert alert-success">✅ อัปโหลดลายเซ็นต์เรียบร้อย</div>';
-        previewEl.innerHTML = `<div style="font-size:13px;color:#27ae60;margin-bottom:4px">✅ ลายเซ็นต์ที่อัปโหลด:</div>
-          <img src="${dataUrl}" style="max-height:80px;border:1px solid #ddd;border-radius:4px;background:white">`;
+      reader.onload = async (e) => {
+        // Compress to max 400px wide
+        const compressed = await compressSigImage(e.target.result, 400);
+        try {
+          localStorage.setItem(sigKey, compressed);
+          document.getElementById('sig-msg').innerHTML = '<div class="alert alert-success">✅ อัปโหลดลายเซ็นต์เรียบร้อย</div>';
+          previewEl.innerHTML = `<div style="font-size:13px;color:#27ae60;margin-bottom:4px">✅ ลายเซ็นต์ที่อัปโหลด:</div>
+            <img src="${compressed}" style="max-height:80px;border:1px solid #ddd;border-radius:4px;background:white">`;
+        } catch(storageErr) {
+          document.getElementById('sig-msg').innerHTML = '<div class="alert alert-danger">❌ รูปใหญ่เกินไป กรุณาใช้รูปขนาดเล็กลง</div>';
+        }
       };
       reader.readAsDataURL(file);
     };
+
+    function compressSigImage(dataUrl, maxW) {
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          const ratio = Math.min(1, maxW / img.width);
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * ratio);
+          c.height = Math.round(img.height * ratio);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/png', 0.7));
+        };
+        img.src = dataUrl;
+      });
+    }
 
     window.deleteSig = () => {
       if (!confirm('ลบลายเซ็นต์หรือไม่?')) return;
@@ -153,6 +179,7 @@ window.VIEW_ADMIN = async function render(container) {
                 <td><span class="badge ${u.active !== false && u.active !== 'FALSE' ? 'badge-green' : 'badge-red'}">${u.active !== false && u.active !== 'FALSE' ? 'ใช้งาน' : 'ปิดใช้'}</span></td>
                 <td>
                   ${u.username !== user.username ? `
+                    <button class="btn btn-sm btn-outline" onclick="doEdit('${u.username}','${(u.display_name||'').replace(/'/g,"\\'")}','${u.role}',${u.active !== false && u.active !== 'FALSE'})">✏️</button>
                     <button class="btn btn-sm btn-outline" onclick="doReset('${u.username}')">🔑 Reset</button>
                     <button class="btn btn-sm btn-danger" onclick="doDelete('${u.username}')">🗑️</button>
                   ` : '<span style="color:var(--text-light);font-size:12px">ตัวเอง</span>'}
@@ -205,6 +232,57 @@ window.VIEW_ADMIN = async function render(container) {
       await APP.resetPassword(username, newPw);
       alert(`✅ รีเซ็ตรหัสผ่านของ ${username} เรียบร้อยแล้ว`);
     } catch (e) { alert('เกิดข้อผิดพลาด: ' + e.message); }
+  };
+
+  window.doEdit = (username, display_name, role, active) => {
+    document.body.insertAdjacentHTML('beforeend', `
+      <div id="edit-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;display:flex;align-items:center;justify-content:center;padding:16px">
+        <div style="background:white;border-radius:10px;padding:24px;max-width:400px;width:100%">
+          <div style="font-size:16px;font-weight:700;margin-bottom:16px">✏️ แก้ไขผู้ใช้: ${username}</div>
+          <div class="form-group">
+            <label class="form-label">ชื่อที่แสดง</label>
+            <input class="form-control" id="edit-display" value="${display_name}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">สิทธิ์</label>
+            <select class="form-control" id="edit-role">
+              <option value="operator" ${role==='operator'?'selected':''}>Operator</option>
+              <option value="viewer" ${role==='viewer'?'selected':''}>Viewer</option>
+              <option value="admin" ${role==='admin'?'selected':''}>Admin</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">สถานะ</label>
+            <select class="form-control" id="edit-active">
+              <option value="true" ${active?'selected':''}>ใช้งาน</option>
+              <option value="false" ${!active?'selected':''}>ปิดใช้</option>
+            </select>
+          </div>
+          <div id="edit-msg"></div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-primary" onclick="submitEdit('${username}')">💾 บันทึก</button>
+            <button class="btn btn-outline" onclick="document.getElementById('edit-modal').remove()">ยกเลิก</button>
+          </div>
+        </div>
+      </div>`);
+  };
+
+  window.submitEdit = async (username) => {
+    const display_name = document.getElementById('edit-display').value.trim();
+    const role = document.getElementById('edit-role').value;
+    const active = document.getElementById('edit-active').value === 'true';
+    const msgEl = document.getElementById('edit-msg');
+    try {
+      const res = await APP.updateUser({ username, display_name, role, active });
+      if (res.success) {
+        document.getElementById('edit-modal').remove();
+        await loadUsers();
+      } else {
+        msgEl.innerHTML = `<div class="alert alert-danger">${res.error}</div>`;
+      }
+    } catch (e) {
+      msgEl.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+    }
   };
 
   window.doDelete = async (username) => {

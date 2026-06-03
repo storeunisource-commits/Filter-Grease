@@ -187,6 +187,37 @@ function buildMonthOptions(selectedMonth) {
   return html;
 }
 
+// ==================== NOTIFICATION POLLING ====================
+
+let _notifTimer = null;
+
+function startNotificationPoll() {
+  if (_notifTimer) return;
+  const poll = () => {
+    if (!isLoggedIn()) return;
+    getNotifications().then(res => {
+      const total = res.total || 0;
+      const badge = document.getElementById('notif-count');
+      const panel = document.getElementById('notif-panel-list');
+      if (badge) { badge.textContent = total; badge.style.display = total > 0 ? '' : 'none'; }
+      if (panel && res.items) {
+        panel.innerHTML = res.items.length === 0
+          ? '<div style="padding:12px;color:#7f8c8d;font-size:13px">ไม่มีการแจ้งเตือน</div>'
+          : res.items.map(n => `<div class="notif-item" onclick="handleNotifClick('${n.link}')">
+              <div class="notif-title">${n.title}</div>
+            </div>`).join('');
+      }
+    }).catch(() => {});
+    _notifTimer = setTimeout(poll, 5 * 60000); // every 5 min
+  };
+  poll();
+}
+
+function stopNotificationPoll() {
+  clearTimeout(_notifTimer);
+  _notifTimer = null;
+}
+
 // Routing is handled in index.html inline script
 // Expose globals for use in view scripts (no module system)
 window.APP = {
@@ -196,7 +227,11 @@ window.APP = {
   getHistory, getStats, getDashboardFull, getCompare, getViolations, getReportHistory, getFleetStatus,
   getTrucksCached, clearTruckCache, preWarm,
   issueStopOrder, getStopOrders, updateStopOrder, approveStopOrder,
-  getUsers, addUser, deleteUser, resetPassword,
+  getUsers, addUser, deleteUser, resetPassword, updateUser,
+  getWarningLetters, approveWarningLetter,
+  recordCompletion,
+  getNotifications, savePDFToDrive,
+  startNotificationPoll, stopNotificationPoll,
   login, logout, isLoggedIn, getUserInfo,
   // Date
   getGreaseCycle, isGreaseWarning, formatThaiDate, formatThaiMonth,

@@ -118,6 +118,8 @@ window.VIEW_DASHBOARD = async function render(container) {
   const useMonth = selMonth ? parseInt(selMonth.value) : curMonth;
   const useDate  = useYear + '-' + String(useMonth).padStart(2,'0') + '-01';
 
+  const user = APP.getUserInfo();
+
   // Load all data
   try {
     const dashRes = await APP.getDashboardFull(useDate);
@@ -129,6 +131,7 @@ window.VIEW_DASHBOARD = async function render(container) {
     const greaseMonth = data.grease_month || [];
     const vioSummary = data.violations_summary || {};
     const reportStatus = data.report_status || {};
+    const activeStopOrders = data.stop_orders || [];
 
     // Stats cards
     document.getElementById('stats-grid').innerHTML = `
@@ -197,6 +200,48 @@ window.VIEW_DASHBOARD = async function render(container) {
         <a href="#submit-report-grease" class="btn btn-sm btn-outline">🔧 ส่งรายงานจาระบี</a>
       </div>
     `;
+
+    // Truck status grid
+    const truckStatusEl = document.getElementById('dash-truck-status-card') || (() => {
+      const el = document.createElement('div');
+      el.id = 'dash-truck-status-card';
+      el.className = 'card';
+      document.getElementById('stats-grid').insertAdjacentElement('afterend', el);
+      return el;
+    })();
+    truckStatusEl.innerHTML = `
+      <div class="card-title">🚛 สถานะรถทุกคัน</div>
+      <div id="dash-truck-status">${renderTruckStatusGrid(trucks, user)}</div>
+    `;
+
+    // Active stop orders summary
+    if (activeStopOrders.length > 0) {
+      const existingSoCard = document.getElementById('dash-so-card');
+      const soEl = existingSoCard || (() => {
+        const el = document.createElement('div');
+        el.id = 'dash-so-card';
+        el.className = 'card';
+        truckStatusEl.insertAdjacentElement('afterend', el);
+        return el;
+      })();
+      soEl.innerHTML = `
+        <div class="card-title">🚫 ใบสั่งหยุดวิ่งที่ Active <span class="badge badge-red" style="margin-left:4px">${activeStopOrders.length}</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>เลขที่</th><th>รถ</th><th>คนขับ</th><th>วันที่</th><th>สาเหตุ</th></tr></thead>
+            <tbody>
+              ${activeStopOrders.map(o => `<tr>
+                <td><small>${o.order_no||''}</small></td>
+                <td><strong>${o.truck_no||''}</strong></td>
+                <td>${o.driver||'-'}</td>
+                <td><small>${o.issue_date||''}</small></td>
+                <td style="font-size:12px">${o.reason_detail||o.reason_type||''}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
 
   } catch (e) {
     document.getElementById('stats-grid').innerHTML = `<div class="alert alert-danger" style="grid-column:1/-1">ไม่สามารถโหลดข้อมูลได้: ${e.message}</div>`;
@@ -355,6 +400,36 @@ function renderDashPending(status, trucks, blowToday, drainToday) {
 
 // ============================================================
 // Dashboard reload by selected month/year
+function renderTruckStatusGrid(trucks, user) {
+  if (!trucks || !trucks.length) return '<div class="alert alert-info">ไม่มีข้อมูลรถ</div>';
+  const isEditor = user && (user.role === 'admin' || user.role === 'operator');
+  const statusOptions = ['ใช้งาน','จอดซ่อม','จอดเคลม','ไม่ใช้งาน'];
+  const statusColors = { 'ใช้งาน':'badge-green', 'จอดซ่อม':'badge-red', 'จอดเคลม':'badge-red', 'ไม่ใช้งาน':'badge-gray' };
+
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">
+    ${trucks.map(t => `
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px 10px">
+        <div style="font-weight:700;font-size:14px;color:var(--primary)">${t.truck_no}</div>
+        <div style="font-size:12px;color:var(--text-light);margin-bottom:6px">${t.driver||'-'}</div>
+        ${isEditor
+          ? `<select class="form-control" style="font-size:12px;padding:4px 6px;height:auto"
+               onchange="changeTruckStatus('${t.truck_no}', this.value)">
+               ${statusOptions.map(s => `<option value="${s}" ${s===t.status?'selected':''}>${s}</option>`).join('')}
+             </select>`
+          : `<span class="badge ${statusColors[t.status]||'badge-gray'}">${t.status||'-'}</span>`}
+      </div>`).join('')}
+  </div>`;
+}
+
+window.changeTruckStatus = async function(truck_no, status) {
+  try {
+    await APP.updateTruck({ truck_no, status });
+    APP.clearTruckCache();
+  } catch (e) {
+    alert('เปลี่ยนสถานะไม่สำเร็จ: ' + e.message);
+  }
+};
+
 window.reloadDashboard = function() {
   window.VIEW_DASHBOARD(document.getElementById('app-container'));
 };

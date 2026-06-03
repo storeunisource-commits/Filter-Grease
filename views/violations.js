@@ -86,15 +86,32 @@ window.VIEW_VIOLATIONS = async function render(container) {
       </div>
       <div id="vio-history"><div class="loading"><div class="spinner"></div></div></div>
     </div>
+
+    <!-- Per-person history -->
+    <div class="card">
+      <div class="card-title">📄 ประวัติรายคน</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <select class="form-control" id="vio-person-truck" style="width:auto">
+          <option value="">-- เลือกรถ --</option>
+        </select>
+        <button class="btn btn-sm btn-primary" onclick="loadPersonHistory()">🔍 โหลด</button>
+      </div>
+      <div id="vio-person-result"></div>
+    </div>
   `;
 
-  // Load trucks for dropdown (cached)
+  // Load trucks for dropdowns (cached)
+  let _activeTrucks = [];
   try {
     const res = await APP.getTrucksCached();
+    _activeTrucks = (res.trucks || []).filter(t => t.active !== false && t.active !== 'FALSE');
+    const truckOptionHtml = '<option value="">-- เลือกเบอร์รถ --</option>' +
+      _activeTrucks.map(t => `<option value="${t.truck_no}" data-driver="${t.driver||''}">${t.truck_no} (${t.driver||'-'})</option>`).join('');
     const sel = document.getElementById('vio-truck');
-    const activeTrucks = (res.trucks || []).filter(t => t.active !== false && t.active !== 'FALSE');
-    sel.innerHTML = '<option value="">-- เลือกเบอร์รถ --</option>' +
-      activeTrucks.map(t => `<option value="${t.truck_no}" data-driver="${t.driver||''}">${t.truck_no} (${t.driver||'-'})</option>`).join('');
+    if (sel) sel.innerHTML = truckOptionHtml;
+    const selPerson = document.getElementById('vio-person-truck');
+    if (selPerson) selPerson.innerHTML = '<option value="">-- เลือกรถ --</option>' +
+      _activeTrucks.map(t => `<option value="${t.truck_no}" data-driver="${t.driver||''}">${t.truck_no} (${t.driver||'-'})</option>`).join('');
   } catch (e) {}
 
   // Init cycle dropdown
@@ -160,19 +177,13 @@ window.VIEW_VIOLATIONS = async function render(container) {
     APP.setButtonLoading(btn, true);
     msg.innerHTML = '';
     try {
-      await APP.saveViolation({ truck_no, driver, task_type, cycle, violation_type, penalty: penalty.action, note: note || '' });
-      msg.innerHTML = `<div class="alert alert-success">✅ บันทึกการละเลยครั้งที่ ${newCount} เรียบร้อย</div>`;
+      const saveRes = await APP.saveViolation({ truck_no, driver, task_type, cycle, violation_type, penalty: penalty.action, note: note || '' });
+      const actualCount = saveRes.vio_count || newCount;
+      const letterInfo = saveRes.letter_no ? `<br>📋 ออกหนังสือเตือนเลขที่ <strong>${saveRes.letter_no}</strong> อัตโนมัติ` : '';
+      const stopInfo = saveRes.auto_stop_order ? `<br>🚫 ออกใบสั่งหยุดวิ่งเลขที่ <strong>${saveRes.auto_stop_order}</strong> อัตโนมัติ` : '';
+      msg.innerHTML = `<div class="alert alert-success">✅ บันทึกการละเลยครั้งที่ ${actualCount} เรียบร้อย${letterInfo}${stopInfo}</div>`;
       APP.setButtonLoading(btn, false);
       loadVioHistory();
-
-      // ถ้า >= 3 ครั้ง แนะนำออกใบหยุดวิ่ง
-      if (newCount >= 3) {
-        setTimeout(() => {
-          if (confirm(`🚨 ${truck_no} มีการละเลยสะสม ${newCount} ครั้งแล้ว\nต้องการออกใบสั่งหยุดวิ่งด้วยหรือไม่?`)) {
-            window.location.hash = '#stoporder';
-          }
-        }, 500);
-      }
     } catch (e) {
       msg.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
       APP.setButtonLoading(btn, false);
@@ -215,8 +226,132 @@ window.VIEW_VIOLATIONS = async function render(container) {
     }
   };
 
+  window.loadPersonHistory = async () => {
+    const sel = document.getElementById('vio-person-truck');
+    const truck_no = sel ? sel.value : '';
+    if (!truck_no) { alert('กรุณาเลือกรถก่อน'); return; }
+    const driver = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].dataset.driver || '' : '';
+    const el = document.getElementById('vio-person-result');
+    el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const res = await APP.getViolations({ truck_no });
+      const records = (res.records || []).slice().reverse();
+      if (!records.length) {
+        el.innerHTML = '<div class="alert alert-success">✅ ไม่มีประวัติการละเลยสำหรับรถคันนี้</div>';
+        return;
+      }
+      const level = records.length >= 3 ? 3 : records.length;
+      el.innerHTML = `
+        <div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-primary" onclick="printPersonHistory('${truck_no}','${driver.replace(/'/g,"\\'")}')">🖨️ พิมพ์/PDF</button>
+          <button class="btn btn-sm btn-outline" onclick="savePersonHistoryToDrive('${truck_no}','${driver.replace(/'/g,"\\'")}')">💾 Drive</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>วันที่</th><th>งาน</th><th>รอบ</th><th>ประเภท</th><th>บทลงโทษ</th><th>บันทึกโดย</th></tr></thead>
+            <tbody>
+              ${records.map(r => `<tr>
+                <td>${r.date||''}</td>
+                <td>${r.task_type||''}</td>
+                <td>${r.cycle||''}</td>
+                <td>${r.violation_type||''}</td>
+                <td><span class="badge badge-red">${r.penalty||''}</span></td>
+                <td style="font-size:12px">${r.recorded_by||''}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text-light)">
+          รวม <strong>${records.length}</strong> ครั้ง &nbsp;|&nbsp; ระดับ: <strong>${level}</strong>
+        </div>`;
+      window._personRecords = records;
+      window._personTruck = truck_no;
+      window._personDriver = driver;
+    } catch (e) {
+      el.innerHTML = `<div class="alert alert-danger">โหลดไม่สำเร็จ: ${e.message}</div>`;
+    }
+  };
+
+  window.printPersonHistory = function(truck_no, driver) {
+    const records = window._personRecords || [];
+    openVioPersonA4(truck_no, driver, records);
+  };
+
+  window.savePersonHistoryToDrive = async function(truck_no, driver) {
+    const records = window._personRecords || [];
+    const content = buildPersonHistoryPlainText(truck_no, driver, records);
+    const title = 'ประวัติละเลย — รถ ' + truck_no + ' — ' + driver;
+    try {
+      const r = await APP.savePDFToDrive({ title, content, folder_type: 'ประวัติละเลย', issue_date: APP.todayISO() });
+      if (r.success) alert('✅ บันทึก PDF ไป Drive สำเร็จ\n' + r.url);
+      else alert('❌ บันทึกไม่สำเร็จ: ' + r.error);
+    } catch (e) { alert('เกิดข้อผิดพลาด: ' + e.message); }
+  };
+
   loadVioHistory();
 };
+
+function buildPersonHistoryPlainText(truck_no, driver, records) {
+  const lines = [
+    'บริษัท ส.ศิวโรจน์ ขนส่ง จำกัด',
+    'ประวัติการละเลยการบำรุงรักษา',
+    'คนขับ: ' + driver + '  รถ: ' + truck_no,
+    '',
+    'วันที่ | งาน | รอบ | ประเภท | บทลงโทษ | บันทึกโดย',
+    ...records.map(r => [r.date||'', r.task_type||'', r.cycle||'', r.violation_type||'', r.penalty||'', r.recorded_by||''].join(' | ')),
+    '',
+    'รวม ' + records.length + ' ครั้ง, ระดับ: ' + (records.length >= 3 ? 3 : records.length)
+  ];
+  return lines.join('\n');
+}
+
+function openVioPersonA4(truck_no, driver, records) {
+  const win = window.open('', '_blank', 'width=820,height=1160');
+  if (!win) { alert('กรุณาอนุญาต Popup เพื่อพิมพ์'); return; }
+  const level = records.length >= 3 ? 3 : records.length;
+  const today = APP.formatThaiDate(new Date());
+  const rows = records.map(r => `<tr>
+    <td>${r.date||''}</td><td>${r.task_type||''}</td><td>${r.cycle||''}</td>
+    <td>${r.violation_type||''}</td><td>${r.penalty||''}</td><td>${r.recorded_by||''}</td>
+  </tr>`).join('');
+
+  win.document.write(`<!DOCTYPE html><html lang="th"><head>
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    @page { size: A4 portrait; margin: 18mm; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Sarabun','Arial',sans-serif; font-size:13pt; color:#000; background:white; }
+    .doc { max-width:170mm; margin:0 auto; }
+    .company-name { font-size:16pt; font-weight:700; color:#1a3a5c; }
+    h2 { font-size:15pt; font-weight:700; margin:16px 0 4px; color:#1a3a5c; }
+    .sub { font-size:12pt; color:#555; margin-bottom:16px; }
+    table { width:100%; border-collapse:collapse; font-size:11pt; margin-top:12px; }
+    th { background:#1a3a5c; color:white; padding:7px 8px; text-align:left; }
+    td { padding:6px 8px; border-bottom:1px solid #ddd; }
+    .footer { margin-top:16px; font-size:11pt; }
+    .no-print { display:none; }
+    @media screen { body { padding:20px; background:#f0f0f0; } .doc { background:white; padding:18mm; box-shadow:0 2px 12px rgba(0,0,0,0.15); } .no-print { display:block; margin-bottom:16px; } }
+  </style>
+  </head><body>
+  <div class="no-print" style="text-align:center">
+    <button onclick="window.print()" style="padding:8px 20px;background:#1a3a5c;color:white;border:none;border-radius:6px;cursor:pointer">🖨️ พิมพ์</button>
+    <button onclick="window.close()" style="margin-left:8px;padding:8px 20px;background:#7f8c8d;color:white;border:none;border-radius:6px;cursor:pointer">✕ ปิด</button>
+  </div>
+  <div class="doc">
+    <div class="company-name">บริษัท ส.ศิวโรจน์ ขนส่ง จำกัด</div>
+    <h2>ประวัติการละเลยการบำรุงรักษา</h2>
+    <div class="sub">คนขับ: <strong>${driver}</strong> &nbsp; รถ: <strong>${truck_no}</strong> &nbsp; วันที่พิมพ์: ${today}</div>
+    <table>
+      <thead><tr><th>วันที่</th><th>งาน</th><th>รอบ</th><th>ประเภท</th><th>บทลงโทษ</th><th>บันทึกโดย</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="footer">รวม <strong>${records.length}</strong> ครั้ง &nbsp;|&nbsp; ระดับ: <strong>${level}</strong></div>
+  </div>
+  </body></html>`);
+  win.document.close();
+}
 
 function updateVioCycleOptions(task) {
   const sel = document.getElementById('vio-cycle');

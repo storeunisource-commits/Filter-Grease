@@ -231,25 +231,40 @@ function renderOrderHistory(orders, isAdmin) {
       <table class="fleet-table" style="width:100%;min-width:600px">
         <thead><tr>
           <th>เลขที่</th><th>วันที่</th><th>รถ</th><th>คนขับ</th>
-          <th>สาเหตุ</th><th>Approve</th><th>จัดการ</th>
+          <th>สาเหตุ</th><th>Approve</th><th>ผล</th><th>จัดการ</th>
         </tr></thead>
         <tbody>
-          ${orders.slice().reverse().map(o => `<tr>
-            <td><small>${o.order_no||''}</small></td>
-            <td><small>${o.issue_date||''}</small></td>
-            <td><strong>${o.truck_no||''}</strong></td>
-            <td>${o.driver||'-'}</td>
-            <td style="font-size:12px">${o.reason_detail||o.reason_type||''}</td>
-            <td><span class="badge ${approvalClass[o.approval_status]||'badge-gray'}">${approvalLabel[o.approval_status]||o.approval_status||'-'}</span></td>
-            <td style="white-space:nowrap">
-              ${o.approval_status === 'approved'
-                ? `<button class="btn btn-sm btn-primary" onclick="printOrderDoc('${o.order_no}')">🖨️ พิมพ์</button>`
-                : ''}
-              ${isAdmin && o.approval_status === 'pending_approval'
-                ? `<button class="btn btn-sm btn-outline" onclick="showApproveModal('${o.order_no}')">✅ Approve</button>`
-                : ''}
-            </td>
-          </tr>`).join('')}
+          ${orders.slice().reverse().map(o => {
+            const hasCompletion = o.completion_date && o.completion_date !== '';
+            const needsCompletion = o.severity === 'stop_work' && o.approval_status === 'approved' && !hasCompletion;
+            return `<tr>
+              <td><small>${o.order_no||''}</small></td>
+              <td><small>${o.issue_date||''}</small></td>
+              <td><strong>${o.truck_no||''}</strong></td>
+              <td>${o.driver||'-'}</td>
+              <td style="font-size:12px">${o.reason_detail||o.reason_type||''}</td>
+              <td><span class="badge ${approvalClass[o.approval_status]||'badge-gray'}">${approvalLabel[o.approval_status]||o.approval_status||'-'}</span></td>
+              <td>
+                ${hasCompletion
+                  ? `<span class="badge badge-green" title="${o.completion_date}">✅ เสร็จแล้ว</span>`
+                  : needsCompletion
+                    ? `<span class="badge badge-orange">รอบันทึกผล</span>`
+                    : '<span style="font-size:11px;color:#bbb">-</span>'}
+              </td>
+              <td style="white-space:nowrap">
+                ${o.approval_status === 'approved'
+                  ? `<button class="btn btn-sm btn-primary" onclick="printOrderDoc('${o.order_no}')">🖨️ พิมพ์</button>
+                     <button class="btn btn-sm btn-outline" onclick="saveSoToDrive('${o.order_no}')">💾</button>`
+                  : ''}
+                ${needsCompletion
+                  ? `<button class="btn btn-sm btn-outline" onclick="showCompletionModal('${o.order_no}')">📝 บันทึกผล</button>`
+                  : ''}
+                ${isAdmin && o.approval_status === 'pending_approval'
+                  ? `<button class="btn btn-sm btn-outline" onclick="showApproveModal('${o.order_no}')">✅ Approve</button>`
+                  : ''}
+              </td>
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>`;
@@ -396,11 +411,13 @@ window.printOrderDoc = async function(order_no) {
   openA4PrintWindow(buildDocHTML(order));
 };
 
-function openA4PrintWindow(docHtml) {
+function openA4PrintWindow(docHtml, extraButtons) {
   const win = window.open('', '_blank', 'width=820,height=1160');
   if (!win) { alert('กรุณาอนุญาต Popup เพื่อพิมพ์'); return; }
   win.document.write(`<!DOCTYPE html><html lang="th"><head>
   <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     @page { size: A4 portrait; margin: 20mm 18mm; }
     * { box-sizing:border-box; margin:0; padding:0; }
@@ -430,6 +447,7 @@ function openA4PrintWindow(docHtml) {
   </head><body>
   <div class="no-print" style="text-align:center">
     <button onclick="window.print()" style="padding:8px 20px;background:#1a3a5c;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨️ พิมพ์เอกสาร</button>
+    ${extraButtons || ''}
     <button onclick="window.close()" style="margin-left:8px;padding:8px 20px;background:#7f8c8d;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px">✕ ปิด</button>
   </div>
   <div class="doc">${docHtml}</div>
@@ -505,6 +523,181 @@ function buildDocHTML(order) {
       รับทราบคำสั่ง:&nbsp;&nbsp;&nbsp; ลงชื่อ ____________________________
       &nbsp;&nbsp;&nbsp;&nbsp; วันที่ ________________
     </div>`;
+}
+
+// ============================================================
+// Save to Drive
+window.saveSoToDrive = async function(order_no) {
+  const res = await APP.getStopOrders();
+  const order = (res.records || []).find(o => o.order_no === order_no);
+  if (!order) return;
+  const content = buildSoPlainText(order);
+  const title = order.order_no + ' — รถ ' + (order.truck_no || '') + ' — ' + (order.driver || '');
+  try {
+    const r = await APP.savePDFToDrive({ title, content, folder_type: 'หนังสือหยุดวิ่ง', issue_date: order.issue_date });
+    if (r.success) alert('✅ บันทึก PDF ไป Drive สำเร็จ\n' + r.url);
+    else alert('❌ บันทึกไม่สำเร็จ: ' + r.error);
+  } catch (e) { alert('เกิดข้อผิดพลาด: ' + e.message); }
+};
+
+function buildSoPlainText(order) {
+  return [
+    'บริษัท ส.ศิวโรจน์ ขนส่ง จำกัด',
+    'หนังสือสั่งหยุดวิ่งงาน',
+    'เลขที่: ' + (order.order_no || ''),
+    'วันที่: ' + (order.issue_date || ''),
+    '',
+    'เรียน: คุณ' + (order.driver || '') + '  รถหมายเลข ' + (order.truck_no || ''),
+    '',
+    'สาเหตุ: ' + (order.reason_detail || order.reason_type || ''),
+    '',
+    'จึงมีคำสั่งให้หยุดวิ่งงานโดยทันที',
+    '',
+    'ลงชื่อ: ' + (order.approved_by || order.issued_by || ''),
+  ].join('\n');
+}
+
+// ============================================================
+// Completion modal
+window.showCompletionModal = function(order_no) {
+  const today = APP.todayISO();
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="completion-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;display:flex;align-items:center;justify-content:center;padding:16px">
+      <div style="background:white;border-radius:10px;padding:24px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto">
+        <div style="font-size:16px;font-weight:700;margin-bottom:16px">📝 บันทึกผลการดำเนินการ</div>
+        <div class="alert alert-info" style="margin-bottom:12px">ใบสั่งหยุดวิ่งเลขที่: <strong>${order_no}</strong></div>
+        <div class="form-group">
+          <label class="form-label">วันที่ดำเนินการ</label>
+          <input class="form-control" type="date" id="comp-date" value="${today}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">รายละเอียด</label>
+          <textarea class="form-control" id="comp-notes" rows="3" placeholder="รายละเอียดการดำเนินการ" style="resize:vertical"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">แนบรูปหลักฐาน (หลายรูปได้)</label>
+          <input type="file" class="form-control" id="comp-images" accept="image/*" multiple>
+        </div>
+        <div id="comp-progress" style="display:none" class="alert alert-info">กำลังอัปโหลด...</div>
+        <div id="comp-msg"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" id="comp-btn" onclick="submitCompletion('${order_no}')">💾 บันทึกผล</button>
+          <button class="btn btn-outline" onclick="document.getElementById('completion-modal').remove()">ยกเลิก</button>
+        </div>
+      </div>
+    </div>`);
+};
+
+window.submitCompletion = async function(order_no) {
+  const btn = document.getElementById('comp-btn');
+  const msgEl = document.getElementById('comp-msg');
+  const progressEl = document.getElementById('comp-progress');
+  const completion_date = document.getElementById('comp-date').value;
+  const completion_notes = document.getElementById('comp-notes').value;
+  const filesInput = document.getElementById('comp-images');
+  const files = filesInput ? Array.from(filesInput.files) : [];
+
+  APP.setButtonLoading(btn, true);
+  msgEl.innerHTML = '';
+
+  // Upload images
+  const imageUrls = [];
+  if (files.length > 0) {
+    progressEl.style.display = '';
+    for (let i = 0; i < files.length; i++) {
+      progressEl.textContent = `อัปโหลดรูปที่ ${i+1}/${files.length}...`;
+      try {
+        const res = await uploadFileAsImage(files[i], 'completion', completion_date);
+        if (res.url) imageUrls.push(res.url);
+      } catch (e) { /* skip failed images */ }
+    }
+    progressEl.style.display = 'none';
+  }
+
+  const user = APP.getUserInfo();
+  try {
+    const res = await APP.recordCompletion({
+      order_no,
+      completion_date,
+      completion_notes,
+      completion_images: imageUrls,
+      completed_by: user ? user.display_name : ''
+    });
+    if (res.success) {
+      document.getElementById('completion-modal').remove();
+      // Get order data and show completion doc
+      const ordersRes = await APP.getStopOrders();
+      const order = (ordersRes.records || []).find(o => o.order_no === order_no);
+      if (order) {
+        order.completion_date = completion_date;
+        order.completion_notes = completion_notes;
+        order.completion_images = imageUrls;
+        order.completed_by = user ? user.display_name : '';
+        openA4PrintWindow(buildCompletionDocHTML(order));
+      }
+      setTimeout(() => window.VIEW_STOPORDER(document.getElementById('app-container')), 800);
+    } else {
+      msgEl.innerHTML = `<div class="alert alert-danger">${res.error}</div>`;
+      APP.setButtonLoading(btn, false);
+    }
+  } catch (e) {
+    msgEl.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+    APP.setButtonLoading(btn, false);
+  }
+};
+
+function buildCompletionDocHTML(order) {
+  const thaiMonths = APP.THAI_MONTHS;
+  const compDateObj = order.completion_date ? new Date(order.completion_date) : new Date();
+  const thaiCompDate = `${compDateObj.getDate()} ${thaiMonths[compDateObj.getMonth()+1]} ${compDateObj.getFullYear()+543}`;
+  const issueDateObj = order.issue_date ? new Date(order.issue_date) : new Date();
+  const thaiIssueDate = `${issueDateObj.getDate()} ${thaiMonths[issueDateObj.getMonth()+1]} ${issueDateObj.getFullYear()+543}`;
+
+  const imagesHtml = (order.completion_images && order.completion_images.length > 0)
+    ? `<div style="page-break-before:always;padding-top:20mm">
+        <div style="font-size:14pt;font-weight:700;color:#1a3a5c;margin-bottom:16px;border-bottom:2px solid #1a3a5c;padding-bottom:8px">รูปหลักฐานการดำเนินการ</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          ${order.completion_images.map(url => `<img src="${url}" style="width:100%;border-radius:4px;border:1px solid #ddd">`).join('')}
+        </div>
+      </div>`
+    : '';
+
+  return `
+    <div class="header-row">
+      <div class="logo-wrap"><img src="Logo.png" onerror="this.style.display='none'"></div>
+      <div class="company-info">
+        <div class="company-name">บริษัท ส.ศิวโรจน์ ขนส่ง จำกัด</div>
+        <div class="company-sub">ฝ่ายซ่อมบำรุงและยานพาหนะ</div>
+      </div>
+      <div class="doc-date">วันที่ ${thaiCompDate}</div>
+    </div>
+
+    <div class="doc-title">เอกสารบันทึกการดำเนินการตามคำสั่งหยุดวิ่ง</div>
+    <div class="doc-no">อ้างอิงใบสั่งหยุดวิ่งเลขที่ ${order.order_no || '-'}</div>
+
+    <div class="doc-body">
+      <p><span class="highlight">รถหมายเลข:</span> ${order.truck_no || ''}&nbsp;&nbsp;&nbsp;
+         <span class="highlight">คนขับ:</span> ${order.driver || '-'}</p>
+      <p><span class="highlight">วันที่ออกคำสั่ง:</span> ${thaiIssueDate}&nbsp;&nbsp;&nbsp;
+         <span class="highlight">วันที่ดำเนินการ:</span> ${thaiCompDate}</p>
+      <p><span class="highlight">สาเหตุ:</span> ${order.reason_detail || order.reason_type || ''}</p>
+      <p><span class="highlight">รายละเอียดการดำเนินการ:</span><br>
+      ${order.completion_notes || '(ไม่มีรายละเอียดเพิ่มเติม)'}</p>
+    </div>
+
+    <div class="signature-section">
+      <div>ผู้ดำเนินการ / ผู้บันทึก</div>
+      <div class="sig-line"></div>
+      <div class="sig-label">(${order.completed_by || '____________________'})</div>
+      <div class="sig-label">วันที่: ${thaiCompDate}</div>
+    </div>
+
+    <div class="ack-section">
+      ผู้รับทราบ:&nbsp;&nbsp;&nbsp; ลงชื่อ ____________________________
+      &nbsp;&nbsp;&nbsp;&nbsp; วันที่ ________________
+    </div>
+
+    ${imagesHtml}`;
 }
 
 // Helper: upload file for approval evidence
