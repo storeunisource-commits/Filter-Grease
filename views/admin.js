@@ -142,12 +142,14 @@ window.VIEW_ADMIN = async function render(container) {
       return new Promise(resolve => {
         const img = new Image();
         img.onload = () => {
-          const ratio = Math.min(1, maxW / img.width);
+          // ลด maxW เหลือ 300px และใช้ JPEG 0.5 quality ลดขนาด localStorage
+          const limit = Math.min(maxW, 300);
+          const ratio = Math.min(1, limit / img.width);
           const c = document.createElement('canvas');
           c.width = Math.round(img.width * ratio);
           c.height = Math.round(img.height * ratio);
           c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-          resolve(c.toDataURL('image/png', 0.7));
+          resolve(c.toDataURL('image/jpeg', 0.5));
         };
         img.src = dataUrl;
       });

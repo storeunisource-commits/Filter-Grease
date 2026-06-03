@@ -136,6 +136,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto; /* ดันให้ชิดขวาเสมอ แม้ hamburger จะ hidden */
 }
 
 /* Hamburger toggle */
@@ -175,6 +176,11 @@ body {
   #sidebar { transform: none !important; }
   #sidebar.hidden { display: flex !important; }
 }
+
+/* Login page: ซ่อน sidebar และ topbar ทั้ง mobile/desktop */
+body.login-page #sidebar,
+body.login-page #topbar { display: none !important; }
+body.login-page { padding-left: 0 !important; padding-top: 0 !important; }
 
 /* Mobile (<768px): sidebar slide-in overlay */
 @media (max-width: 767px) {
@@ -577,6 +583,8 @@ tr:last-child td { border-bottom: none; }
 .fleet-table td.s-done     { background: #d5f5e3; }
 .fleet-table td.s-called   { background: #fef9e7; }
 .fleet-table td.s-not_done { background: #fdedec; }
+.fleet-table td.s-due-now  { background: #fff3cd; font-weight: 700; } /* สัปดาห์นี้ยังไม่ทำ */
+.fleet-table td.s-overdue  { background: #f8d7da; font-weight: 700; color: #c0392b; } /* เกินกำหนดแล้ว */
 .fleet-table tr:hover td   { filter: brightness(0.96); }
 
 /* ==================== STATUS OPTIONS (entry form) ==================== */

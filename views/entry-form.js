@@ -63,6 +63,18 @@ window.renderEntryForm = function(container, trucks, violations, today, week, ty
   // Load today records
   loadTodayList(type, today);
 
+  // Pre-select รถถ้ามี (มาจาก fleet table กด "จัดการ")
+  if (window._pendingTruck) {
+    const sel = document.getElementById(`${type}-truck-select`);
+    if (sel) {
+      sel.value = window._pendingTruck;
+      window._pendingTruck = null;
+      // Trigger onchange
+      const fn = window[`onTruckSelect_${type}`];
+      if (fn) setTimeout(fn, 50);
+    }
+  }
+
   window[`onTruckSelect_${type}`] = () => {
     const sel = document.getElementById(`${type}-truck-select`);
     const truck = activeTrucks.find(t => t.truck_no === sel.value);

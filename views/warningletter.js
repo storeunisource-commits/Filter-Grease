@@ -92,12 +92,17 @@ function renderWLTable(letters, isAdmin) {
     return `<span class="badge badge-gray">${s||'-'}</span>`;
   };
 
+  const ackBadge = (s) => {
+    if (s === 'acknowledged') return '<span class="badge badge-green">✅ รับทราบแล้ว</span>';
+    return '<span class="badge badge-gray">⏳ ยังไม่รับทราบ</span>';
+  };
+
   return `
     <div class="table-wrap">
       <table>
         <thead><tr>
           <th>เลขที่</th><th>วันที่</th><th>รถ</th><th>คนขับ</th>
-          <th>ระดับ</th><th>เหตุผล</th><th>สถานะ</th><th>จัดการ</th>
+          <th>ระดับ</th><th>เหตุผล</th><th>สถานะ</th><th>รับทราบ</th><th>จัดการ</th>
         </tr></thead>
         <tbody>
           ${letters.slice().reverse().map(l => `<tr>
@@ -108,11 +113,15 @@ function renderWLTable(letters, isAdmin) {
             <td>${levelLabel(l.level)}</td>
             <td style="font-size:12px">${l.reason||''}</td>
             <td>${statusBadge(l.approval_status)}</td>
+            <td>${ackBadge(l.ack_status)}</td>
             <td style="white-space:nowrap">
               <button class="btn btn-sm btn-outline" onclick="printWLDoc('${l.letter_no}')">🖨️ พิมพ์</button>
               <button class="btn btn-sm btn-outline" onclick="saveWLToDrive('${l.letter_no}')">💾 Drive</button>
               ${isAdmin && l.approval_status === 'pending'
                 ? `<button class="btn btn-sm btn-primary" onclick="showApproveWL('${l.letter_no}')">✅ Approve</button>`
+                : ''}
+              ${l.approval_status === 'approved' && l.ack_status !== 'acknowledged'
+                ? `<button class="btn btn-sm btn-outline" style="color:var(--success);border-color:var(--success)" onclick="recordWLAck('${l.letter_no}','${(l.driver||'').replace(/'/g,"\\'")}')">✍️ รับทราบ</button>`
                 : ''}
             </td>
           </tr>`).join('')}
@@ -159,6 +168,30 @@ window.confirmApproveWL = async function(letter_no) {
     }
   } catch (e) {
     msgEl.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+  }
+};
+
+// ============================================================
+// บันทึกการรับทราบของคนขับ
+window.recordWLAck = async function(letter_no, driver) {
+  const today = APP.todayISO();
+  const user = APP.getUserInfo();
+  const confirmed = confirm(`บันทึกว่า "${driver}" รับทราบหนังสือเตือน ${letter_no} แล้ว?\nวันที่: ${today}`);
+  if (!confirmed) return;
+  try {
+    const res = await APP.approveWarningLetter({
+      letter_no,
+      ack_status: 'acknowledged',
+      ack_date: today,
+      ack_by: user ? user.display_name : ''
+    });
+    if (res.success) {
+      window.VIEW_WARNINGLETTER(document.getElementById('app-container'));
+    } else {
+      alert('บันทึกไม่สำเร็จ: ' + res.error);
+    }
+  } catch (e) {
+    alert('เกิดข้อผิดพลาด: ' + e.message);
   }
 };
 
@@ -213,8 +246,12 @@ function buildWLDocHTML(letter) {
   const levelTitles = { 1: 'บันทึกการตักเตือนด้วยวาจา', 2: 'หนังสือเตือน', 3: 'หนังสือเตือนขั้นสุดท้าย' };
   const docTitle = levelTitles[Math.min(levelN, 3)] || levelTitles[1];
   const vioCount = parseInt(letter.violation_count || 0);
-  const sigHtml = letter.signature_url
-    ? `<div class="sig-line"><img src="${letter.signature_url}" alt="ลายเซ็นต์"></div>`
+  // Fallback: อ่านลายเซ็นต์จาก localStorage ถ้า sheet ไม่มี (sheet เก็บ base64 ขนาดใหญ่ไม่ได้)
+  const currentUser = APP.getUserInfo();
+  const localSig = currentUser ? localStorage.getItem('sig_' + currentUser.username) : null;
+  const sigSrc = letter.signature_url || localSig || '';
+  const sigHtml = sigSrc
+    ? `<div class="sig-line"><img src="${sigSrc}" alt="ลายเซ็นต์"></div>`
     : `<div class="sig-line"></div>`;
 
   const levelDescriptions = {

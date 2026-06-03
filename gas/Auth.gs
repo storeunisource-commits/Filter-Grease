@@ -13,7 +13,8 @@ function createToken(user) {
 function verifyToken(token) {
   if (!token) return null;
   try {
-    const payload = JSON.parse(Utilities.newBlob(Utilities.base64Decode(token)).getDataAsString());
+    // ระบุ UTF-8 ชัดเจน เพื่อให้ display_name ภาษาไทยไม่กลายเป็น ?????
+    const payload = JSON.parse(Utilities.newBlob(Utilities.base64Decode(token)).getDataAsString('UTF-8'));
     if (payload.e < Date.now()) return null;
     return { username: payload.u, role: payload.r, display_name: payload.n };
   } catch (e) { return null; }

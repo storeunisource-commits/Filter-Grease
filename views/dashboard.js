@@ -111,18 +111,14 @@ window.VIEW_DASHBOARD = async function render(container) {
   }
   alertsEl.innerHTML += `<div class="alert alert-info">📋 เป่ากรอง/เดรนน้ำ: Week ${week} ของเดือน</div>`;
 
-  // ใช้ selected year/month ถ้ามี (กรณี reloadDashboard)
-  const selYear  = document.getElementById('dash-year');
-  const selMonth = document.getElementById('dash-month');
-  const useYear  = selYear  ? parseInt(selYear.value)  : curYear;
-  const useMonth = selMonth ? parseInt(selMonth.value) : curMonth;
-  const useDate  = useYear + '-' + String(useMonth).padStart(2,'0') + '-01';
+  // statsDate ใช้ today เสมอ (ไม่เปลี่ยนตาม selector) เพื่อให้ blow/drain stats ถูกต้อง
+  const statsDate = APP.todayISO();
 
   const user = APP.getUserInfo();
 
   // Load all data
   try {
-    const dashRes = await APP.getDashboardFull(useDate);
+    const dashRes = await APP.getDashboardFull(statsDate);
     const data = dashRes.data || {};
     const stats = data.stats || {};
     const trucks = data.trucks || [];
@@ -262,6 +258,32 @@ window.VIEW_DASHBOARD = async function render(container) {
       if (!truckList.length) { el.innerHTML = '<div class="alert alert-info">ไม่มีข้อมูลรถ</div>'; return; }
       const SI = { done:'✅', called:'📞', not_done:'❌' };
       const SC = { done:'s-done', called:'s-called', not_done:'s-not_done' };
+      const today = new Date();
+      const curWeek = APP.getWeekOfMonth(today);
+      const curDay  = today.getDate();
+      const lastDay = APP.getLastDayOfMonth(today.getFullYear(), today.getMonth()+1);
+      const isR1Open  = curDay >= 10 && curDay <= 15;
+      const isR2Open  = curDay >= 25 && curDay <= lastDay;
+      const isR1Late  = curDay > 15;     // รอบ 1 หมดแล้ว
+      const isR2Late  = curDay > lastDay; // รอบ 2 หมดแล้ว (วันถัดไปเดือนใหม่)
+
+      // highlight cell: สัปดาห์/รอบปัจจุบันที่ยังไม่ทำ = ส้ม, เกินกำหนดแล้วไม่ทำ = แดง
+      const cellClass = (v, wk, type) => {
+        if (v === 'done') return 's-done';
+        if (v === 'called') return 's-called';
+        if (type === 'blow' || type === 'drain') {
+          if (parseInt(wk) < curWeek && v !== 'done') return 's-overdue'; // สัปดาห์ผ่านไปแล้ว
+          if (parseInt(wk) === curWeek && !v)         return 's-due-now'; // สัปดาห์นี้ยังไม่ทำ
+        }
+        if (type === 'grease') {
+          if (wk === '1' && isR1Late && v !== 'done') return 's-overdue';
+          if (wk === '1' && isR1Open && !v)           return 's-due-now';
+          if (wk === '2' && isR2Late && v !== 'done') return 's-overdue';
+          if (wk === '2' && isR2Open && !v)           return 's-due-now';
+        }
+        return SC[v] || '';
+      };
+
       el.innerHTML = `
         <div class="table-wrap">
           <table class="fleet-table">
@@ -272,6 +294,7 @@ window.VIEW_DASHBOARD = async function render(container) {
                 <th class="grp-blow" colspan="4">💨 เป่ากรอง</th>
                 <th class="grp-drain" colspan="4">💧 เดรนน้ำ</th>
                 <th class="grp-grease" colspan="2">🔧 อัดจาระบี</th>
+                <th rowspan="2">จัดการ</th>
               </tr>
               <tr>
                 <th class="grp-blow">W1</th><th class="grp-blow">W2</th>
@@ -285,20 +308,30 @@ window.VIEW_DASHBOARD = async function render(container) {
               ${truckList.map(t => {
                 const f = fleet[t.truck_no] || {};
                 const b = f.blow || {}; const d = f.drain || {}; const g = f.grease || {};
-                const cell = (v) => `<td class="${SC[v]||''}">${SI[v]||'-'}</td>`;
+                const cell = (v, wk, type) => `<td class="${cellClass(v,wk,type)}">${SI[v]||'-'}</td>`;
                 return `<tr>
                   <td class="td-truck">${t.truck_no}</td>
                   <td class="td-driver">${t.driver||'-'}</td>
-                  ${cell(b['1'])}${cell(b['2'])}${cell(b['3'])}${cell(b['4'])}
-                  ${cell(d['1'])}${cell(d['2'])}${cell(d['3'])}${cell(d['4'])}
-                  ${cell(g['1'])}${cell(g['2'])}
+                  ${cell(b['1'],'1','blow')}${cell(b['2'],'2','blow')}${cell(b['3'],'3','blow')}${cell(b['4'],'4','blow')}
+                  ${cell(d['1'],'1','drain')}${cell(d['2'],'2','drain')}${cell(d['3'],'3','drain')}${cell(d['4'],'4','drain')}
+                  ${cell(g['1'],'1','grease')}${cell(g['2'],'2','grease')}
+                  <td style="white-space:nowrap">
+                    <button class="btn btn-sm btn-outline" title="เป่ากรอง"
+                      onclick="goRecord('#blow','${t.truck_no}')">💨</button>
+                    <button class="btn btn-sm btn-outline" title="เดรนน้ำ"
+                      onclick="goRecord('#drain','${t.truck_no}')">💧</button>
+                    <button class="btn btn-sm btn-outline" title="อัดจาระบี"
+                      onclick="goRecord('#grease','${t.truck_no}')">🔧</button>
+                  </td>
                 </tr>`;
               }).join('')}
             </tbody>
           </table>
         </div>
         <div style="font-size:11px;color:#7f8c8d;margin-top:6px">
-          ✅ ทำแล้ว &nbsp; 📞 โทรแจ้งแล้ว &nbsp; ❌ ยังไม่ได้ทำ &nbsp; - ไม่มีข้อมูล
+          ✅ ทำแล้ว &nbsp; 📞 โทรแจ้งแล้ว &nbsp; ❌ ยังไม่ได้ทำ &nbsp;
+          <span style="background:#fff3cd;padding:1px 4px;border-radius:3px">สัปดาห์นี้ยังไม่ทำ</span> &nbsp;
+          <span style="background:#f8d7da;padding:1px 4px;border-radius:3px">เกินกำหนดแล้ว</span>
         </div>`;
     } catch (e) {
       el.innerHTML = `<div class="alert alert-danger">โหลดไม่สำเร็จ: ${e.message}</div>`;
@@ -428,6 +461,12 @@ window.changeTruckStatus = async function(truck_no, status) {
   } catch (e) {
     alert('เปลี่ยนสถานะไม่สำเร็จ: ' + e.message);
   }
+};
+
+// Navigate ไปหน้าบันทึก พร้อม pre-select รถ
+window.goRecord = function(hash, truck_no) {
+  window._pendingTruck = truck_no;
+  window.location.hash = hash;
 };
 
 window.reloadDashboard = function() {

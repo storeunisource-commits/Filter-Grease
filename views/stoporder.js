@@ -470,9 +470,12 @@ function buildDocHTML(order) {
   };
   const taskText = reasonLabels[order.reason_type] || order.reason_type || '';
 
-  // Signature section
-  const sigHtml = order.signature_url
-    ? `<div class="sig-line"><img src="${order.signature_url}" alt="ลายเซ็นต์"></div>`
+  // Signature section — fallback อ่านจาก localStorage ถ้า sheet ไม่มี
+  const currentUser = APP.getUserInfo();
+  const localSig = currentUser ? localStorage.getItem('sig_' + currentUser.username) : null;
+  const sigSrc = order.signature_url || localSig || '';
+  const sigHtml = sigSrc
+    ? `<div class="sig-line"><img src="${sigSrc}" alt="ลายเซ็นต์"></div>`
     : `<div class="sig-line"></div>`;
 
   return `

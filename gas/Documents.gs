@@ -120,7 +120,7 @@ function getWarningLetters(params) {
 
 function approveWarningLetter(params, user) {
   if (user.role !== 'admin') return { success: false, error: 'ต้องเป็น admin' };
-  const { letter_no, signature_url } = params;
+  const { letter_no, signature_url, ack_status, ack_date, ack_by } = params;
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName('เตือน_Log');
   const data = sheet.getDataRange().getValues();
@@ -128,9 +128,24 @@ function approveWarningLetter(params, user) {
   const idx = (h) => headers.indexOf(h);
   for (let i = 1; i < data.length; i++) {
     if (data[i][idx('letter_no')] === letter_no) {
-      sheet.getRange(i+1, idx('approval_status')+1).setValue('approved');
-      sheet.getRange(i+1, idx('status')+1).setValue('approved');
-      if (signature_url) sheet.getRange(i+1, idx('signature_url')+1).setValue(signature_url);
+      // Approve flow
+      if (ack_status === undefined) {
+        sheet.getRange(i+1, idx('approval_status')+1).setValue('approved');
+        sheet.getRange(i+1, idx('status')+1).setValue('approved');
+        // เก็บ signature_url เฉพาะเมื่อสั้นพอ (< 40000 chars) ป้องกัน cell overflow
+        if (signature_url && signature_url.length < 40000) {
+          sheet.getRange(i+1, idx('signature_url')+1).setValue(signature_url);
+        }
+      }
+      // Acknowledgment flow — บันทึกการรับทราบของคนขับ
+      if (ack_status === 'acknowledged') {
+        const ackIdx = idx('ack_status');
+        const ackDateIdx = idx('ack_date');
+        const ackByIdx = idx('ack_by');
+        if (ackIdx >= 0) sheet.getRange(i+1, ackIdx+1).setValue('acknowledged');
+        if (ackDateIdx >= 0) sheet.getRange(i+1, ackDateIdx+1).setValue(ack_date || new Date().toISOString().split('T')[0]);
+        if (ackByIdx >= 0) sheet.getRange(i+1, ackByIdx+1).setValue(ack_by || user.display_name);
+      }
       return { success: true };
     }
   }

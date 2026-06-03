@@ -98,6 +98,16 @@ function renderGreaseForm(container, trucks, today, monthYear, monthLabel, lastD
   // Load today records
   loadGreaseTodayList(monthYear);
 
+  // Pre-select รถถ้ามี (มาจาก fleet table กด "จัดการ")
+  if (window._pendingTruck) {
+    const sel = document.getElementById('grease-truck-select');
+    if (sel) {
+      sel.value = window._pendingTruck;
+      window._pendingTruck = null;
+      setTimeout(() => { if (window.onGreaseTruckSelect) window.onGreaseTruckSelect(); }, 50);
+    }
+  }
+
   window.onGreaseTruckSelect = () => {
     const sel = document.getElementById('grease-truck-select');
     const truck = activeTrucks.find(t => t.truck_no === sel.value);

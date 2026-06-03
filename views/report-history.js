@@ -17,6 +17,10 @@ window['VIEW_REPORT_HISTORY'] = async function render(container) {
 
     el.innerHTML = `
       <div class="card">
+        <div class="card-title">
+          📋 รายการส่งรายงานทั้งหมด
+          <span class="badge badge-gray" style="margin-left:8px">${records.length} รายการ</span>
+        </div>
         <div class="table-wrap">
           <table>
             <thead><tr>

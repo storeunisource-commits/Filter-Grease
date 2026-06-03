@@ -78,8 +78,8 @@
   <div class="loading"><div class="spinner"></div><p>กำลังโหลด...</p></div>
 </main>
 
-<script src="api.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="api.js?v=8"></script>
+<script src="app.js?v=8"></script>
 
 <script>
 const VIEW_SCRIPTS = {
@@ -117,7 +117,7 @@ async function loadScript(src) {
   if (loadedScripts[src]) return;
   await new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = src + '?v=7';
+    s.src = src + '?v=8';
     s.onload = resolve;
     s.onerror = reject;
     document.head.appendChild(s);
@@ -219,6 +219,7 @@ async function navigate() {
   if (hash !== '#login') {
     document.body.style.paddingLeft = '';
     document.body.style.paddingTop = '';
+    document.body.classList.remove('login-page');
   }
 
   APP.showLoading(container);

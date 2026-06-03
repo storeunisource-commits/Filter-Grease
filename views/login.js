@@ -1,10 +1,7 @@
 // views/login.js — Login page redesign
 window.VIEW_LOGIN = function render(container) {
-  // Ensure sidebar/topbar hidden on login page
-  ['sidebar', 'topbar'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.add('hidden');
-  });
+  // ใช้ body class เพื่อให้ CSS override ทั้ง mobile/desktop รวมถึง !important ใน media query
+  document.body.classList.add('login-page');
   document.body.style.paddingLeft = '0';
   document.body.style.paddingTop = '0';
 
