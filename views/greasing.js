@@ -147,8 +147,8 @@ function renderGreaseForm(container, trucks, today, monthYear, monthLabel, lastD
           <input class="form-control" type="date" id="grease-done-date" value="${APP.todayISO()}">
         </div>
         <div class="form-group">
-          <label class="form-label">แนบรูปภาพ (ไม่บังคับ)</label>
-          <input class="form-control" type="file" id="grease-image" accept="image/*">
+          <label class="form-label">แนบรูปภาพ (ไม่บังคับ, เลือกได้หลายรูป)</label>
+          <input class="form-control" type="file" id="grease-image" accept="image/*" multiple>
         </div>
         <div class="form-group">
           <label class="form-label">หมายเหตุ</label>
@@ -186,8 +186,15 @@ function renderGreaseForm(container, trucks, today, monthYear, monthLabel, lastD
       let image_url = '';
       if (action === 'done') {
         const fileEl = document.getElementById('grease-image');
-        if (fileEl && fileEl.files[0]) {
-          image_url = await uploadImageFile(fileEl.files[0], truck.truck_no, 'อัดจาระบี', APP.todayISO());
+        if (fileEl && fileEl.files.length > 0) {
+          const urls = [];
+          for (let i = 0; i < fileEl.files.length; i++) {
+            try {
+              const url = await uploadImageFile(fileEl.files[i], truck.truck_no, 'อัดจาระบี', APP.todayISO());
+              if (url) urls.push(url);
+            } catch (e) { /* skip failed images */ }
+          }
+          image_url = urls.join(',');
         }
       }
 

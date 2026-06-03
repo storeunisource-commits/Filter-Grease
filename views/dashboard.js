@@ -229,7 +229,8 @@ window.VIEW_DASHBOARD = async function render(container) {
         const el = document.createElement('div');
         el.id = 'dash-so-card';
         el.className = 'card';
-        truckStatusEl.insertAdjacentElement('afterend', el);
+        // แทรกหลัง dash-reports card
+        document.getElementById('dash-reports').closest('.card').insertAdjacentElement('afterend', el);
         return el;
       })();
       soEl.innerHTML = `

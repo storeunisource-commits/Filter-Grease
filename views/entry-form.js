@@ -113,8 +113,8 @@ window.renderEntryForm = function(container, trucks, violations, today, week, ty
           <input class="form-control" type="date" id="${type}-done-date" value="${APP.todayISO()}">
         </div>
         <div class="form-group">
-          <label class="form-label">แนบรูปภาพ (ไม่บังคับ)</label>
-          <input class="form-control" type="file" id="${type}-image" accept="image/*">
+          <label class="form-label">แนบรูปภาพ (ไม่บังคับ, เลือกได้หลายรูป)</label>
+          <input class="form-control" type="file" id="${type}-image" accept="image/*" multiple>
         </div>
         <div class="form-group">
           <label class="form-label">หมายเหตุ</label>
@@ -153,11 +153,16 @@ window.renderEntryForm = function(container, trucks, violations, today, week, ty
       let image_url = '';
       if (action === 'done') {
         const fileEl = document.getElementById(`${type}-image`);
-        if (fileEl && fileEl.files[0]) {
-          if (window._uploadImageFile) {
-            image_url = await window._uploadImageFile(fileEl.files[0], truck.truck_no,
-              window[`_${type}TaskName`], APP.todayISO());
+        if (fileEl && fileEl.files.length > 0 && window._uploadImageFile) {
+          const urls = [];
+          for (let i = 0; i < fileEl.files.length; i++) {
+            try {
+              const url = await window._uploadImageFile(fileEl.files[i], truck.truck_no,
+                window[`_${type}TaskName`], APP.todayISO());
+              if (url) urls.push(url);
+            } catch (e) { /* skip failed images */ }
           }
+          image_url = urls.join(',');
         }
       }
 

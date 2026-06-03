@@ -124,13 +124,23 @@ window.VIEW_ADMIN = async function render(container) {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = async (e) => {
-        // Compress to max 400px wide
         const compressed = await compressSigImage(e.target.result, 400);
         try {
           localStorage.setItem(sigKey, compressed);
           document.getElementById('sig-msg').innerHTML = '<div class="alert alert-success">✅ อัปโหลดลายเซ็นต์เรียบร้อย</div>';
           previewEl.innerHTML = `<div style="font-size:13px;color:#27ae60;margin-bottom:4px">✅ ลายเซ็นต์ที่อัปโหลด:</div>
             <img src="${compressed}" style="max-height:80px;border:1px solid #ddd;border-radius:4px;background:white">`;
+          // วาดรูปที่อัปโหลดลง canvas ด้วย เพื่อป้องกัน "บันทึกลายเซ็นต์" overwrite ด้วย canvas ว่าง
+          const img = new Image();
+          img.onload = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const ratio = Math.min(canvas.width / img.width, canvas.height / img.height);
+            const w = img.width * ratio, h = img.height * ratio;
+            ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+          };
+          img.src = compressed;
         } catch(storageErr) {
           document.getElementById('sig-msg').innerHTML = '<div class="alert alert-danger">❌ รูปใหญ่เกินไป กรุณาใช้รูปขนาดเล็กลง</div>';
         }
