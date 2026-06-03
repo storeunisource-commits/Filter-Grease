@@ -1,5 +1,5 @@
 // api.js — Filter-Grease Frontend API Module
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzbdKanCODP8wk6O2sfUlD6Q_XaEbe9R0L3fWIyAWrW_Q73WbZowFE0d3d_KO5KT6Zq/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbw1W2KL-9uUWww9S1sMUjjK7AwHgssKF8AU4MZ-ywS7s8zxn1AyScIwzCuPwJ0INm24EA/exec';
 const TOKEN_KEY = 'fg_token';
 const USER_KEY = 'fg_user';
 
