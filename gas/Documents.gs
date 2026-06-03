@@ -139,12 +139,14 @@ function approveWarningLetter(params, user) {
       }
       // Acknowledgment flow — บันทึกการรับทราบของคนขับ
       if (ack_status === 'acknowledged') {
-        const ackIdx = idx('ack_status');
-        const ackDateIdx = idx('ack_date');
-        const ackByIdx = idx('ack_by');
-        if (ackIdx >= 0) sheet.getRange(i+1, ackIdx+1).setValue('acknowledged');
+        const ackIdx      = idx('ack_status');
+        const ackDateIdx  = idx('ack_date');
+        const ackByIdx    = idx('ack_by');
+        const ackImgIdx   = idx('ack_image_url');
+        if (ackIdx >= 0)     sheet.getRange(i+1, ackIdx+1).setValue('acknowledged');
         if (ackDateIdx >= 0) sheet.getRange(i+1, ackDateIdx+1).setValue(ack_date || new Date().toISOString().split('T')[0]);
-        if (ackByIdx >= 0) sheet.getRange(i+1, ackByIdx+1).setValue(ack_by || user.display_name);
+        if (ackByIdx >= 0)   sheet.getRange(i+1, ackByIdx+1).setValue(ack_by || user.display_name);
+        if (ackImgIdx >= 0 && params.ack_image_url) sheet.getRange(i+1, ackImgIdx+1).setValue(params.ack_image_url);
       }
       return { success: true };
     }

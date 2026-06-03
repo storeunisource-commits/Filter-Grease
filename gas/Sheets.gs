@@ -10,7 +10,7 @@ const SHEET_HEADERS = {
   'ละเลย_Log':     ['timestamp','date','truck_no','driver','task_type','cycle','violation_type','penalty','note','recorded_by'],
   'รายงาน_Log':    ['timestamp','report_type','report_cycle','week','month_year','sent_date','sent_by','on_time','note'],
   'หยุดวิ่ง_Log':  ['timestamp','order_no','issue_date','truck_no','driver','reason_type','reason_detail','severity','status','acknowledged_at','completed_at','issued_by','approval_status','approved_by','approved_at','approval_evidence_url','signature_url','vio_count','completion_date','completion_notes','completion_images','completed_by'],
-  'เตือน_Log':     ['timestamp','letter_no','issue_date','truck_no','driver','level','violation_count','reason','cycle','issued_by','approval_status','signature_url','status']
+  'เตือน_Log':     ['timestamp','letter_no','issue_date','truck_no','driver','level','violation_count','reason','cycle','issued_by','approval_status','signature_url','status','ack_status','ack_date','ack_by','ack_image_url']
 };
 
 function sheetToObjects(sheetName) {

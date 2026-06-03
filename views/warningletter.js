@@ -92,8 +92,14 @@ function renderWLTable(letters, isAdmin) {
     return `<span class="badge badge-gray">${s||'-'}</span>`;
   };
 
-  const ackBadge = (s) => {
-    if (s === 'acknowledged') return '<span class="badge badge-green">✅ รับทราบแล้ว</span>';
+  const ackBadge = (l) => {
+    if (l.ack_status === 'acknowledged') {
+      return `<div><span class="badge badge-green">✅ รับทราบแล้ว</span>
+        ${l.ack_date ? `<div style="font-size:11px;color:#7f8c8d;margin-top:2px">📅 ${l.ack_date}</div>` : ''}
+        ${l.ack_by  ? `<div style="font-size:11px;color:#7f8c8d">👤 ${l.ack_by}</div>` : ''}
+        ${l.ack_image_url ? `<a href="${l.ack_image_url}" target="_blank" class="btn btn-sm btn-outline" style="margin-top:2px;font-size:11px">🖼️ รูป</a>` : ''}
+      </div>`;
+    }
     return '<span class="badge badge-gray">⏳ ยังไม่รับทราบ</span>';
   };
 
@@ -113,7 +119,7 @@ function renderWLTable(letters, isAdmin) {
             <td>${levelLabel(l.level)}</td>
             <td style="font-size:12px">${l.reason||''}</td>
             <td>${statusBadge(l.approval_status)}</td>
-            <td>${ackBadge(l.ack_status)}</td>
+            <td>${ackBadge(l)}</td>
             <td style="white-space:nowrap">
               <button class="btn btn-sm btn-outline" onclick="printWLDoc('${l.letter_no}')">🖨️ พิมพ์</button>
               <button class="btn btn-sm btn-outline" onclick="saveWLToDrive('${l.letter_no}')">💾 Drive</button>
@@ -172,28 +178,90 @@ window.confirmApproveWL = async function(letter_no) {
 };
 
 // ============================================================
-// บันทึกการรับทราบของคนขับ
-window.recordWLAck = async function(letter_no, driver) {
+// บันทึกการรับทราบของคนขับ — Modal พร้อม field วันที่/ชื่อ/รูปหลักฐาน
+window.recordWLAck = function(letter_no, driver) {
   const today = APP.todayISO();
   const user = APP.getUserInfo();
-  const confirmed = confirm(`บันทึกว่า "${driver}" รับทราบหนังสือเตือน ${letter_no} แล้ว?\nวันที่: ${today}`);
-  if (!confirmed) return;
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="wl-ack-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;display:flex;align-items:center;justify-content:center;padding:16px">
+      <div style="background:white;border-radius:10px;padding:24px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto">
+        <div style="font-size:16px;font-weight:700;margin-bottom:12px">✍️ บันทึกการรับทราบ</div>
+        <div class="alert alert-info" style="margin-bottom:12px">หนังสือเตือนเลขที่: <strong>${letter_no}</strong></div>
+        <div class="form-group">
+          <label class="form-label">ชื่อผู้รับทราบ (คนขับ)</label>
+          <input class="form-control" type="text" id="ack-by-name" value="${driver}" placeholder="ชื่อคนขับ">
+        </div>
+        <div class="form-group">
+          <label class="form-label">วันที่รับทราบ</label>
+          <input class="form-control" type="date" id="ack-date-input" value="${today}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">แนบรูปหลักฐาน (ไม่บังคับ)</label>
+          <input type="file" class="form-control" id="ack-image-file" accept="image/*">
+        </div>
+        <div id="ack-progress" style="display:none" class="alert alert-info">กำลังอัปโหลดรูป...</div>
+        <div id="ack-msg"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" id="ack-confirm-btn" onclick="submitWLAck('${letter_no}')">✅ บันทึก</button>
+          <button class="btn btn-outline" onclick="document.getElementById('wl-ack-modal').remove()">ยกเลิก</button>
+        </div>
+      </div>
+    </div>`);
+};
+
+window.submitWLAck = async function(letter_no) {
+  const btn = document.getElementById('ack-confirm-btn');
+  const msgEl = document.getElementById('ack-msg');
+  const progressEl = document.getElementById('ack-progress');
+  const ackBy   = document.getElementById('ack-by-name').value.trim();
+  const ackDate = document.getElementById('ack-date-input').value;
+  const fileEl  = document.getElementById('ack-image-file');
+  const user = APP.getUserInfo();
+
+  APP.setButtonLoading(btn, true);
+  let ack_image_url = '';
+
+  if (fileEl && fileEl.files[0]) {
+    progressEl.style.display = '';
+    try {
+      const res = await APP.uploadImage(
+        await fileToBase64(fileEl.files[0]),
+        fileEl.files[0].type, 'ack', 'หนังสือเตือน', ackDate
+      );
+      if (res.success) ack_image_url = res.url;
+    } catch (e) { /* ถ้า upload ไม่ได้ก็ข้ามไป */ }
+    progressEl.style.display = 'none';
+  }
+
   try {
     const res = await APP.approveWarningLetter({
       letter_no,
       ack_status: 'acknowledged',
-      ack_date: today,
-      ack_by: user ? user.display_name : ''
+      ack_date: ackDate,
+      ack_by: ackBy || (user ? user.display_name : ''),
+      ack_image_url
     });
     if (res.success) {
+      document.getElementById('wl-ack-modal').remove();
       window.VIEW_WARNINGLETTER(document.getElementById('app-container'));
     } else {
-      alert('บันทึกไม่สำเร็จ: ' + res.error);
+      msgEl.innerHTML = `<div class="alert alert-danger">${res.error}</div>`;
+      APP.setButtonLoading(btn, false);
     }
   } catch (e) {
-    alert('เกิดข้อผิดพลาด: ' + e.message);
+    msgEl.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+    APP.setButtonLoading(btn, false);
   }
 };
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 // ============================================================
 // Print warning letter — A4 standalone window

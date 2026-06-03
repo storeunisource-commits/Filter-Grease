@@ -142,14 +142,17 @@ window.VIEW_ADMIN = async function render(container) {
       return new Promise(resolve => {
         const img = new Image();
         img.onload = () => {
-          // ลด maxW เหลือ 300px และใช้ JPEG 0.5 quality ลดขนาด localStorage
           const limit = Math.min(maxW, 300);
           const ratio = Math.min(1, limit / img.width);
           const c = document.createElement('canvas');
           c.width = Math.round(img.width * ratio);
           c.height = Math.round(img.height * ratio);
-          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-          resolve(c.toDataURL('image/jpeg', 0.5));
+          const ctx = c.getContext('2d');
+          // fill white ก่อน เพื่อแก้ PNG transparent → JPEG ดำ
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, c.width, c.height);
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.6));
         };
         img.src = dataUrl;
       });

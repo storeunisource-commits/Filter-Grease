@@ -1,6 +1,6 @@
 // gas/Drive.gs — Google Drive operations
 
-const DRIVE_FOLDER_ID_ROOT = '1m_ERAf4x-XDMWW0sx_2RmuX_b';
+const DRIVE_FOLDER_ID_ROOT = '1m_ERAf4x-RPTAzt-XDMWW0sx_2RmuX_b';
 
 function uploadImage(params, user) {
   const { base64, mimeType, truck_no, task_type, date } = params;

@@ -65,7 +65,9 @@ function getDashboardFull(params) {
         total: trucks.length,
         blow_done: blowDone.length,
         blow_called: blowCalled.length,
+        blow_recorded: blowToday.length,   // ทุก action_status รวมกัน
         drain_done: drainToday.filter(r => r.action_status === 'done').length,
+        drain_recorded: drainToday.length, // ทุก action_status รวมกัน
         grease_r1_done: greaseMonth.filter(r => r.cycle === '10-15' && r.action_status === 'done').length,
         grease_r2_done: greaseMonth.filter(r => r.cycle === '25-end' && r.action_status === 'done').length
       },

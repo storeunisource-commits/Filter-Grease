@@ -129,34 +129,59 @@ window.VIEW_DASHBOARD = async function render(container) {
     const reportStatus = data.report_status || {};
     const activeStopOrders = data.stop_orders || [];
 
-    // Stats cards
+    // Stats cards — แสดง recorded (บันทึกแล้ว) แทน done เพื่อไม่ให้เข้าใจผิดว่าข้อมูลหาย
+    const blowRec  = stats.blow_recorded  !== undefined ? stats.blow_recorded  : blowToday.length;
+    const drainRec = stats.drain_recorded !== undefined ? stats.drain_recorded : drainToday.length;
     document.getElementById('stats-grid').innerHTML = `
       <div class="stat-card green">
-        <div class="stat-number">${stats.blow_done||0}/${stats.total||0}</div>
-        <div class="stat-label">เป่ากรองวันนี้ ✅</div>
+        <div class="stat-number">${blowRec}/${stats.total||0}</div>
+        <div class="stat-label">เป่ากรองวันนี้ 📝</div>
+        <div style="font-size:11px;color:#27ae60;margin-top:2px">ทำแล้ว ${stats.blow_done||0} คัน</div>
       </div>
       <div class="stat-card orange">
         <div class="stat-number">${stats.blow_called||0}</div>
         <div class="stat-label">โทรแล้วรอดำเนินการ 📞</div>
       </div>
       <div class="stat-card green">
-        <div class="stat-number">${stats.drain_done||0}/${stats.total||0}</div>
-        <div class="stat-label">เดรนน้ำวันนี้ ✅</div>
+        <div class="stat-number">${drainRec}/${stats.total||0}</div>
+        <div class="stat-label">เดรนน้ำวันนี้ 📝</div>
+        <div style="font-size:11px;color:#27ae60;margin-top:2px">ทำแล้ว ${stats.drain_done||0} คัน</div>
       </div>
       <div class="stat-card orange">
         <div class="stat-number">${stats.grease_r1_done||0}/${stats.total||0}</div>
-        <div class="stat-label">อัดจาระบีรอบ 1</div>
+        <div class="stat-label">อัดจาระบีรอบ 1 ✅</div>
       </div>
     `;
 
-    // Pending tabs
+    // Pending tabs — คำนวณ count แต่ละ tab แล้วใส่ badge
+    const cntCalled  = [...blowToday, ...drainToday].filter(r => r.action_status === 'called').length;
+    const cntNotDone = [...blowToday, ...drainToday].filter(r => r.action_status === 'not_done').length;
+    const cntDone    = [...blowToday, ...drainToday].filter(r => r.action_status === 'done').length;
+    const tabsEl = document.getElementById('dash-tabs');
+    tabsEl.innerHTML = `
+      <button class="tab-btn" onclick="dashTab('called',this)">
+        📞 โทรแล้วยังไม่ทำ ${cntCalled > 0 ? `<span class="badge badge-orange" style="margin-left:4px">${cntCalled}</span>` : ''}
+      </button>
+      <button class="tab-btn" onclick="dashTab('not_done',this)">
+        ❌ ยังไม่ได้ทำเลย ${cntNotDone > 0 ? `<span class="badge badge-red" style="margin-left:4px">${cntNotDone}</span>` : ''}
+      </button>
+      <button class="tab-btn" onclick="dashTab('done',this)">
+        ✅ ทำแล้ว ${cntDone > 0 ? `<span class="badge badge-green" style="margin-left:4px">${cntDone}</span>` : ''}
+      </button>
+    `;
+
+    // auto-select tab ที่มีข้อมูล
+    const defaultTab = cntCalled > 0 ? 'called' : cntNotDone > 0 ? 'not_done' : 'done';
+    const defaultBtn = tabsEl.querySelector('.tab-btn');
+    if (defaultBtn) defaultBtn.classList.add('active');
+
     window._dashData = { trucks, blowToday, drainToday };
     window.dashTab = (status, btn) => {
       document.querySelectorAll('#dash-tabs .tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       renderDashPending(status, trucks, blowToday, drainToday);
     };
-    renderDashPending('called', trucks, blowToday, drainToday);
+    renderDashPending(defaultTab, trucks, blowToday, drainToday);
 
     // Violations
     const vioEl = document.getElementById('dash-violations');
@@ -195,19 +220,6 @@ window.VIEW_DASHBOARD = async function render(container) {
         <a href="#submit-report" class="btn btn-sm btn-outline">📤 ส่งรายงานเป่ากรอง/เดรนน้ำ</a>
         <a href="#submit-report-grease" class="btn btn-sm btn-outline">🔧 ส่งรายงานจาระบี</a>
       </div>
-    `;
-
-    // Truck status grid
-    const truckStatusEl = document.getElementById('dash-truck-status-card') || (() => {
-      const el = document.createElement('div');
-      el.id = 'dash-truck-status-card';
-      el.className = 'card';
-      document.getElementById('stats-grid').insertAdjacentElement('afterend', el);
-      return el;
-    })();
-    truckStatusEl.innerHTML = `
-      <div class="card-title">🚛 สถานะรถทุกคัน</div>
-      <div id="dash-truck-status">${renderTruckStatusGrid(trucks, user)}</div>
     `;
 
     // Active stop orders summary
@@ -433,35 +445,6 @@ function renderDashPending(status, trucks, blowToday, drainToday) {
 
 // ============================================================
 // Dashboard reload by selected month/year
-function renderTruckStatusGrid(trucks, user) {
-  if (!trucks || !trucks.length) return '<div class="alert alert-info">ไม่มีข้อมูลรถ</div>';
-  const isEditor = user && (user.role === 'admin' || user.role === 'operator');
-  const statusOptions = ['ใช้งาน','จอดซ่อม','จอดเคลม','ไม่ใช้งาน'];
-  const statusColors = { 'ใช้งาน':'badge-green', 'จอดซ่อม':'badge-red', 'จอดเคลม':'badge-red', 'ไม่ใช้งาน':'badge-gray' };
-
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">
-    ${trucks.map(t => `
-      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px 10px">
-        <div style="font-weight:700;font-size:14px;color:var(--primary)">${t.truck_no}</div>
-        <div style="font-size:12px;color:var(--text-light);margin-bottom:6px">${t.driver||'-'}</div>
-        ${isEditor
-          ? `<select class="form-control" style="font-size:12px;padding:4px 6px;height:auto"
-               onchange="changeTruckStatus('${t.truck_no}', this.value)">
-               ${statusOptions.map(s => `<option value="${s}" ${s===t.status?'selected':''}>${s}</option>`).join('')}
-             </select>`
-          : `<span class="badge ${statusColors[t.status]||'badge-gray'}">${t.status||'-'}</span>`}
-      </div>`).join('')}
-  </div>`;
-}
-
-window.changeTruckStatus = async function(truck_no, status) {
-  try {
-    await APP.updateTruck({ truck_no, status });
-    APP.clearTruckCache();
-  } catch (e) {
-    alert('เปลี่ยนสถานะไม่สำเร็จ: ' + e.message);
-  }
-};
 
 // Navigate ไปหน้าบันทึก พร้อม pre-select รถ
 window.goRecord = function(hash, truck_no) {
